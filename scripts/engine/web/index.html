@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DupeScope · 同曲多版本甄别</title>
+<style>
+:root{
+  --bg:#0e1014; --panel:#151922; --panel2:#1b2029; --line:#252b36; --line2:#2f3745;
+  --fg:#e7eaf0; --dim:#8b95a7; --dim2:#626c7d;
+  --acc:#4d8dff; --ok:#2ecc8f; --warn:#f0a92e; --bad:#ff5b62; --gold:#ffd25b;
+  --mono:"JetBrains Mono",Consolas,"Cascadia Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.55 "Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;cursor:pointer;border:none;border-radius:8px}
+input,select{font:inherit;background:#0c0f14;border:1px solid var(--line2);color:var(--fg);
+  border-radius:8px;padding:8px 10px;outline:none}
+input:focus{border-color:var(--acc)}
+.mono{font-family:var(--mono)}
+
+/* ---------- 顶栏 ---------- */
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);
+  border-bottom:1px solid var(--line);flex:none}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;letter-spacing:.2px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--acc);
+  box-shadow:0 0 12px var(--acc)}
+.brand small{font-weight:400;color:var(--dim);font-size:12px;margin-left:2px}
+.pills{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.pill{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);
+  background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 9px}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--dim2)}
+.pill.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.pill.off i{background:var(--bad)}
+
+/* ---------- 控制区 ---------- */
+.controls{display:flex;gap:8px;align-items:center;padding:12px 18px;background:#101319;
+  border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+.pathbox{flex:1;min-width:260px;position:relative}
+.pathbox input{width:100%;padding-right:34px}
+.pathbox .clr{position:absolute;right:6px;top:6px;background:none;color:var(--dim2);
+  font-size:16px;padding:2px 6px}
+.chipset{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--dim)}
+.chipset label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line2);padding:8px 14px}
+.btn:hover{border-color:var(--acc)}
+.btn.primary{background:linear-gradient(180deg,#4d8dff,#3a72d8);border-color:#5a97ff;
+  color:#fff;font-weight:600}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px}
+
+/* ---------- 进度 ---------- */
+.progress{height:3px;background:#0a0c10;flex:none;overflow:hidden;display:none}
+.progress.on{display:block}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#4dd8c0);
+  width:0;transition:width .3s}
+.statusline{padding:7px 18px;font-size:12px;color:var(--dim);background:#0c0f14;
+  border-bottom:1px solid var(--line);display:flex;gap:14px;flex:none;min-height:33px;align-items:center}
+.statusline b{color:var(--fg);font-weight:600}
+
+/* ---------- 主体 ---------- */
+main{flex:1;display:flex;overflow:hidden}
+#list{flex:1;overflow:auto;padding:14px 18px 40px}
+.side{width:0;overflow:hidden;border-left:1px solid var(--line);background:var(--panel);
+  transition:width .18s;display:flex;flex-direction:column}
+.side.open{width:430px}
+.side .sidehead{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:8px;flex:none}
+.side .sidehead b{font-size:13px}
+.side .sidebody{overflow:auto;padding:14px;font-size:12.5px;color:var(--dim);line-height:1.75}
+.side .sidebody h4{color:var(--fg);margin:16px 0 6px;font-size:13px}
+.side .sidebody code{font-family:var(--mono);background:#0c0f14;padding:1px 5px;border-radius:4px;
+  color:#9fc4ff;font-size:11.5px}
+.side .sidebody ul{padding-left:18px;margin:4px 0}
+.side .sidebody li{margin:3px 0}
+
+/* ---------- 概览 ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px}
+.kpi b{display:block;font-size:19px;font-family:var(--mono)}
+.kpi span{font-size:11.5px;color:var(--dim)}
+
+/* ---------- 曲目组 ---------- */
+.group{background:var(--panel);border:1px solid var(--line);border-radius:11px;margin-bottom:9px;
+  overflow:hidden}
+.ghead{display:grid;grid-template-columns:26px 1fr 92px 108px 84px 74px 20px;gap:10px;
+  align-items:center;padding:11px 14px;cursor:pointer}
+.ghead:hover{background:var(--panel2)}
+.caret{color:var(--dim2);transition:transform .15s;font-size:11px}
+.group.open .caret{transform:rotate(90deg)}
+.gtitle{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsub{font-size:11.5px;color:var(--dim);font-weight:400;margin-top:1px}
+.vcount{font-size:11.5px;color:var(--dim);background:#0d1016;border:1px solid var(--line);
+  border-radius:20px;padding:2px 8px;justify-self:start;white-space:nowrap}
+.metric{font-family:var(--mono);font-size:12.5px;text-align:right}
+.metric span{display:block;font-size:10px;color:var(--dim2);font-family:inherit}
+.score{font-family:var(--mono);font-size:16px;font-weight:700;text-align:right}
+.dot-bad{width:7px;height:7px;border-radius:50%;background:var(--bad);
+  box-shadow:0 0 8px var(--bad);justify-self:center}
+.dot-ok{width:7px;height:7px;border-radius:50%;background:var(--ok);opacity:.5;justify-self:center}
+
+.gbody{display:none;border-top:1px solid var(--line);padding:12px 14px 16px;background:#111520}
+.group.open .gbody{display:block}
+.advice{background:#1d1a10;border-left:3px solid var(--gold);color:#ffe6a6;font-size:12.5px;
+  padding:8px 11px;border-radius:0 7px 7px 0;margin-bottom:12px;line-height:1.6}
+.advice.ok{background:#0f1d18;border-left-color:var(--ok);color:#a9e9cf}
+
+.vers{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:11px}
+.ver{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;
+  position:relative}
+.ver.best{border-color:rgba(46,204,143,.55);background:linear-gradient(180deg,#14201c,#171d24)}
+.vtop{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.rk{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line2);
+  border-radius:5px;padding:1px 6px}
+.vscore{margin-left:auto;font-family:var(--mono);font-weight:700;font-size:15px}
+.badge{font-size:10.5px;font-weight:700;border-radius:20px;padding:1px 8px;
+  background:rgba(46,204,143,.16);color:var(--ok);border:1px solid rgba(46,204,143,.35)}
+.badge.bad{background:rgba(255,91,98,.14);color:#ff9aa0;border-color:rgba(255,91,98,.35)}
+.badge.warn{background:rgba(240,169,46,.14);color:#ffca7a;border-color:rgba(240,169,46,.35)}
+.vname{font-weight:600;font-size:13px;word-break:break-all;line-height:1.4}
+.valbum{font-size:11.5px;color:var(--dim);margin:2px 0 9px;word-break:break-all}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-bottom:9px}
+.cell{background:#0d1117;border:1px solid #1e242e;border-radius:7px;padding:5px 8px}
+.cell .k{font-size:10.5px;color:var(--dim2)}
+.cell .v{font-family:var(--mono);font-size:13px;font-weight:600}
+.cell .v i{font-style:normal;font-size:10.5px;color:var(--dim);font-weight:400}
+.cell .v.bad{color:#ff8d93}.cell .v.warn{color:#ffca7a}.cell .v.ok{color:#7fe3ba}
+.spec{display:flex;align-items:flex-end;gap:2px;height:34px;margin:2px 0 8px}
+.spec i{flex:1;background:linear-gradient(180deg,#4d8dff,#2a4d8f);border-radius:1px 1px 0 0;
+  min-height:2px;opacity:.85}
+.spec i.cut{background:#3a3f4a}
+.flags{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.flag{font-size:11.5px;padding:5px 8px;border-radius:6px;line-height:1.5}
+.flag.bad{background:rgba(255,91,98,.1);color:#ffa8ad;border-left:2px solid var(--bad)}
+.flag.warn{background:rgba(240,169,46,.1);color:#ffcf8a;border-left:2px solid var(--warn)}
+.flag.info{background:rgba(77,141,255,.08);color:#a8c4f5;border-left:2px solid var(--acc)}
+.vacts{display:flex;gap:6px;margin-top:2px}
+.vacts .btn{flex:1;background:#0e1219;border:1px solid #242b36;color:var(--dim);font-size:11.5px;
+  padding:5px 4px}
+.vacts .btn:hover{color:var(--fg);border-color:var(--acc)}
+.empty{text-align:center;padding:70px 20px;color:var(--dim2)}
+.empty h3{color:var(--dim);font-weight:600;margin:0 0 6px}
+.hint{font-size:12px;color:var(--dim2);margin-top:6px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2a313d;border-radius:6px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 目录浏览弹层 ---------- */
+.modal{position:fixed;inset:0;background:rgba(6,8,11,.72);display:none;align-items:center;
+  justify-content:center;z-index:50;backdrop-filter:blur(2px)}
+.modal.on{display:flex}
+.mbox{width:min(720px,92vw);max-height:82vh;background:var(--panel);border:1px solid var(--line2);
+  border-radius:12px;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.mhead{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
+.mhead b{font-size:14px}
+.mpath{font-family:var(--mono);font-size:11.5px;color:var(--dim);padding:8px 15px;
+  background:#0c0f14;border-bottom:1px solid var(--line);word-break:break-all}
+.mlist{overflow:auto;padding:6px;flex:1;min-height:180px}
+.mrow{display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:7px;
+  cursor:pointer;font-size:13px}
+.mrow:hover{background:var(--panel2)}
+.mrow .ico{color:var(--gold);font-size:12px}
+.mrow .cnt{margin-left:auto;font-size:11px;color:var(--dim2);font-family:var(--mono)}
+.mfoot{display:flex;align-items:center;gap:8px;padding:11px 15px;border-top:1px solid var(--line);
+  background:#101319}
+.mfoot .dim{color:var(--dim);font-size:11.5px}
+
+/* ---------- 标签页 ---------- */
+.tabs{display:flex;gap:4px;background:#0c0f14;border:1px solid var(--line);border-radius:10px;padding:3px}
+.tabs button{background:transparent;color:var(--dim);padding:5px 13px;border-radius:7px;font-size:12.5px}
+.tabs button.on{background:var(--panel2);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line2)}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+
+/* ---------- 排序视图 ---------- */
+.obar{display:flex;gap:14px;align-items:center;padding:10px 18px;background:#101319;
+  border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
+.obar label{font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+.obar select{padding:6px 9px}
+.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--fg);cursor:pointer}
+.chk input{accent-color:var(--acc)}
+.tblwrap{flex:1;overflow:auto;padding:6px 16px 20px}
+.tblwrap table{width:100%;border-collapse:collapse;font-size:13px}
+.tblwrap th{position:sticky;top:0;background:var(--bg);text-align:left;font-weight:500;
+  color:var(--dim);font-size:11px;letter-spacing:.5px;padding:8px;border-bottom:1px solid var(--line2);z-index:2}
+.tblwrap td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tblwrap tr:hover td{background:#141922}
+.idx{font-family:var(--mono);color:var(--gold);width:36px}
+.oldname{font-family:var(--mono);font-size:12px;color:var(--dim);word-break:break-all}
+.newname{font-family:var(--mono);font-size:12px;color:var(--ok);word-break:break-all}
+.meta2{color:var(--dim2);font-size:11.5px;white-space:nowrap}
+.warnbox{margin:10px 18px 0;border:1px solid #58401a;background:#1d1710;color:#f0c07a;
+  border-radius:9px;padding:10px 13px;font-size:12.5px;line-height:1.65}
+.warnbox.ok{border-color:#1d4437;background:#0f1a16;color:#7fe0b6}
+.warnbox b{color:inherit}
+
+/* ---------- 位对齐 / 响度工具页 ---------- */
+.toolgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px;
+  overflow:auto;flex:1;align-content:start}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tcard>h3{margin:0;padding:12px 15px;font-size:14px;border-bottom:1px solid var(--line);
+  background:var(--panel2);display:flex;align-items:center;gap:8px}
+.tcard>h3 .tag{font-size:10.5px;font-weight:400;color:var(--dim);border:1px solid var(--line2);
+  border-radius:10px;padding:1px 8px;margin-left:auto}
+.tbody{padding:13px 15px}
+.tbody p{margin:0 0 10px;font-size:12.5px;color:var(--dim);line-height:1.6}
+.tbody .pathline{display:flex;gap:7px;margin-bottom:10px}
+.tbody .pathline input{flex:1;min-width:0;font-size:12.5px}
+.stat{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin:8px 0}
+.stat b{color:var(--fg);font-family:var(--mono)}
+.minitbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.minitbl th{text-align:left;color:var(--dim2);font-weight:500;padding:5px 6px;
+  border-bottom:1px solid var(--line)}
+.minitbl td{padding:5px 6px;border-bottom:1px solid var(--line);font-family:var(--mono)}
+.badge{display:inline-block;font-size:10.5px;border-radius:8px;padding:1px 7px;
+  background:#182b24;color:#7fe3ba;border:1px solid #1d4437}
+.badge.bad{background:#2b181a;color:#ff9ba0;border-color:#5a2328}
+.badge.warn{background:#2b2418;color:#ffce7a;border-color:#5a4823}
+.altrow{display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap}
+a.lnk{color:var(--acc);text-decoration:none;font-size:12px}
+a.lnk:hover{text-decoration:underline}
+@media(max-width:900px){.toolgrid{grid-template-columns:1fr}}
+.actions-row{display:flex;align-items:center;gap:9px;padding:10px 18px;border-top:1px solid var(--line);
+  background:#101319;flex:none;flex-wrap:wrap}
+.actions-row .spacer{flex:1}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="dot"></span>DupeScope<small>同曲甄别 · 顺序修正</small></div>
+  <div class="tabs">
+    <button data-tab="scan" class="on">版本甄别</button>
+    <button data-tab="order">播放顺序</button>
+    <button data-tab="tools">位对齐 · 响度</button>
+  </div>
+  <div class="pills" id="pills"></div>
+</header>
+
+<div class="view on" id="viewScan">
+<div class="controls">
+  <div class="pathbox">
+    <input id="rootInput" placeholder="粘贴专辑根目录，或点「选文件夹」… 多个目录用 ; 分隔"
+           spellcheck="false">
+    <button class="clr" id="clearRoot" title="清空">×</button>
+  </div>
+  <button class="btn" id="pick">选文件夹</button>
+  <button class="btn" id="browse">浏览</button>
+  <button class="btn primary" id="scan">开始分析</button>
+  <button class="btn ghost" id="helpBtn" title="指标说明 / 免费工具清单">?</button>
+</div>
+
+<div class="progress" id="bar"><i></i></div>
+<div class="statusline" id="status">
+  <span>就绪。默认只深度分析「有多版」的曲目，其余只读元数据，100 GB 库也能跑。</span>
+</div>
+
+<main>
+  <div id="list">
+    <div class="empty">
+      <h3>还没有结果</h3>
+      <div>选一个装着多张专辑的文件夹，我会找出同一首歌的所有版本并排比一遍</div>
+      <div class="hint">比对项：频谱上限 · 有效位深 · DR 动态 · 真峰值 · 削波 · 转码痕迹</div>
+    </div>
+  </div>
+  <aside class="side" id="side">
+    <div class="sidehead"><b>指标与工具</b><button class="btn sm ghost" id="closeSide"
+      style="margin-left:auto">×</button></div>
+    <div class="sidebody" id="sideBody"></div>
+  </aside>
+</main>
+</div><!-- /viewScan -->
+
+<div class="view" id="viewOrder">
+  <div class="controls">
+    <div class="pathbox">
+      <input id="oPath" placeholder="粘贴《同一首歌》这类文件夹路径，或点「选文件夹」…" spellcheck="false">
+      <button class="clr" id="oClear" title="清空">×</button>
+    </div>
+    <button class="btn" id="oPick">选文件夹</button>
+    <button class="btn primary" id="oScan">扫描顺序</button>
+    <button class="btn ghost" id="oHelp" title="为什么顺序会乱 / 各手段治哪种播放器">?</button>
+  </div>
+
+  <div class="obar">
+    <label>排序依据
+      <select id="oSort">
+        <option value="title">歌名 → 歌星（拼音）</option>
+        <option value="artist">歌星 → 歌名（拼音）</option>
+        <option value="name">现有文件名（自然序）</option>
+        <option value="mtime">文件时间</option>
+      </select>
+    </label>
+    <label>序号格式
+      <select id="oPrefix">
+        <option value="num">01 歌名 - 歌星</option>
+        <option value="numdot">01.歌名 - 歌星</option>
+        <option value="numdash">01-歌名 - 歌星</option>
+        <option value="none">不加序号</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="oRecursive">含子文件夹</label>
+    <label class="chk"><input type="checkbox" id="oTags">写标签</label>
+    <label class="chk"><input type="checkbox" id="oTimes">改时间戳</label>
+    <label class="chk"><input type="checkbox" id="oFat">复制有序副本</label>
+  </div>
+
+  <div id="oNote"></div>
+  <div class="statusline" id="oStatus"><span>选一个文件夹，先看方案——默认不动任何文件。</span></div>
+
+  <div class="tblwrap" id="oTable">
+    <div class="empty"><h3>还没有方案</h3>
+      <div>这里会把「同一首歌」里各个歌星的版本按拼音排好，并给出改名 / 播放列表方案</div>
+      <div class="hint">问题根因：FAT/exFAT 的目录顺序 = 文件写入顺序，WAV 又没有 track 标签，播放器只能照写入顺序播</div>
+    </div>
+  </div>
+
+  <div class="actions-row" id="oActions" style="display:none">
+    <span class="dim" id="oSummary"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="oUndo">撤销上次操作</button>
+    <button class="btn primary" id="oApply">应用</button>
+  </div>
+</div><!-- /viewOrder -->
+
+<div class="view" id="viewTools">
+  <div class="toolgrid">
+    <!-- 位对齐 -->
+    <section class="tcard">
+      <h3>🎯 位对齐校验 <span class="tag">AccurateRip / CTDB</span></h3>
+      <div class="tbody">
+        <p>用整盘 cue 的 TOC 算出 discID，逐轨算 AccurateRip v1/v2 校验和，与全网数据库比对——
+           这是唯一能证明"这份抓轨和别人逐位一致"的手段，比任何频谱/动态指标都硬。
+           <b style="color:var(--warn)">单曲文件没有 TOC，物理上无法校验</b>，会明确告诉你。</p>
+        <div class="pathline">
+          <input id="alPath" placeholder="粘贴含 .cue 的专辑目录…" spellcheck="false">
+          <button class="btn sm" id="alFind">找 cue</button>
+          <button class="btn sm primary" id="alRun">批量校验</button>
+        </div>
+        <div class="altrow">
+          <label class="chk"><input type="checkbox" id="alOffline">离线（只算本地，不联网）</label>
+          <span class="dim" id="alCuestatus"></span>
+        </div>
+        <div id="alOut"></div>
+      </div>
+    </section>
+
+    <!-- 响度归一 -->
+    <section class="tcard">
+      <h3>🔊 整库响度归一 <span class="tag">ReplayGain · rsgain</span></h3>
+      <div class="tbody">
+        <p>把每条曲目的响度（LUFS）和建议增益量出来，解决"响的显得好"的比较偏差。
+           默认<b>只读扫描</b>（在临时副本上进行，原目录零改动）；确认后才写 ReplayGain 标签，
+           只改标签不动音频流，JRiver / foobar / 手机播放器都能自动应用。</p>
+        <div class="pathline">
+          <input id="gnPath" placeholder="粘贴音乐库目录…" spellcheck="false">
+          <select id="gnLufs" title="目标响度">
+            <option value="-18">-18 LUFS（ReplayGain 标准）</option>
+            <option value="-23">-23 LUFS（EBU R128 广播）</option>
+          </select>
+          <button class="btn sm primary" id="gnRun">扫描建议</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="gnNoAlbum">无专辑结构（单曲目录）</label>
+        <div id="gnOut"></div>
+      </div>
+    </section>
+  </div>
+</div><!-- /viewTools -->
+
+<div class="modal" id="modal">
+  <div class="mbox">
+    <div class="mhead"><b>选择音乐文件夹</b>
+      <button class="btn sm ghost" id="mClose" style="margin-left:auto">×</button></div>
+    <div class="mpath" id="mPath">—</div>
+    <div class="mlist" id="mList"></div>
+    <div class="mfoot">
+      <button class="btn sm" id="mUp">上一级</button>
+      <span class="dim" id="mCount"></span>
+      <button class="btn primary sm" id="mPick" style="margin-left:auto">用这个目录</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = {jobId:null, data:null, filter:"all", q:""};
+
+/* ---------------- 工具 ---------------- */
+const fmtSize = b => b>1e9 ? (b/1e9).toFixed(2)+" GB" : (b/1e6).toFixed(1)+" MB";
+const fmtDur = s => {
+  if(!s) return "—";
+  const m=Math.floor(s/60), ss=Math.floor(s%60);
+  return m+":"+String(ss).padStart(2,"0");
+};
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function scoreClass(s){ return s>=80?"ok" : s>=60?"warn" : "bad"; }
+function cutClass(v){
+  const r = v.cutoff_ratio||0;
+  if((v.flags||[]).some(f=>["FAKE_LOSSLESS","TRANSCODE","UPSAMPLED"].includes(f.code))) return "bad";
+  if(r>=0.95) return "ok";
+  if(r>=0.88) return "warn";
+  return "bad";
+}
+function drClass(d){ return d==null?"" : d>=12?"ok" : d>=9?"warn" : "bad"; }
+
+/* ---------------- 顶栏探活 ---------------- */
+async function health(){
+  try{
+    const h = await (await fetch("/api/health")).json();
+    const t = h.tools||{};
+    const items = [
+      ["ffmpeg", t.ffmpeg?.ok],
+      ["ffprobe", t.ffprobe?.ok],
+      ["Spek", t.spek?.ok],
+      ["CUETools", t.cuetools?.ok],
+      ["rsgain", t.rsgain?.ok],
+    ];
+    $("#pills").innerHTML = items.map(([n,ok])=>
+      `<span class="pill ${ok?'on':'off'}" title="${esc(t[n.toLowerCase()]?.path||'')}">
+        <i></i>${n}</span>`).join("");
+  }catch(e){}
+}
+
+/* ---------------- 选择文件夹 ---------------- */
+$("#pick").onclick = async () => {
+  $("#pick").textContent = "选择中…";
+  try{
+    const r = await (await fetch("/api/pick-folder",{method:"POST"})).json();
+    if(r.path){
+      const cur = $("#rootInput").value.trim();
+      $("#rootInput").value = cur ? cur+";"+r.path : r.path;
+    }
+  }catch(e){ alert("打开选择框失败："+e); }
+  $("#pick").textContent = "选文件夹";
+};
+$("#clearRoot").onclick = () => { $("#rootInput").value = ""; };
+
+/* ---------------- 内置目录浏览器 ---------------- */
+const modal = $("#modal");
+let mbPath = "", mbParent = "";
+
+async function mbGo(path){
+  const url = path ? "/api/browse?path="+encodeURIComponent(path) : "/api/browse";
+  let r;
+  try{ r = await (await fetch(url)).json(); }
+  catch(e){ alert("读取目录失败："+e); return; }
+  if(r.error){ alert(r.error); return; }
+  mbPath = r.path; mbParent = r.parent || r.path;
+  $("#mPath").textContent = r.path;
+  $("#mCount").textContent = `本目录（含子目录）共 ${r.audio_count} 个音频文件`;
+  const rows = (r.dirs||[]).map(d=>`<div class="mrow" data-p="${esc(d.path)}">
+      <span class="ico">▸</span><span>${esc(d.name)}</span></div>`).join("");
+  $("#mList").innerHTML = rows ||
+    `<div class="mrow" style="cursor:default;color:var(--dim2)">（没有子目录，可直接用这个目录）</div>`;
+  $("#mList").querySelectorAll(".mrow[data-p]").forEach(el=>{
+    el.onclick = ()=> mbGo(el.dataset.p);
+  });
+}
+$("#browse").onclick = ()=>{ modal.classList.add("on"); mbGo(mbPath); };
+$("#mClose").onclick = ()=> modal.classList.remove("on");
+modal.onclick = e => { if(e.target===modal) modal.classList.remove("on"); };
+$("#mUp").onclick = ()=> mbGo(mbParent);
+$("#mPick").onclick = ()=>{
+  const cur = $("#rootInput").value.trim();
+  $("#rootInput").value = cur ? cur+";"+mbPath : mbPath;
+  modal.classList.remove("on");
+};
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") modal.classList.remove("on"); });
+
+/* ---------------- 扫描 ---------------- */
+$("#scan").onclick = async () => {
+  const raw = $("#rootInput").value.split(";").map(s=>s.trim()).filter(Boolean);
+  if(!raw.length){ alert("先选一个文件夹"); return; }
+  state.data = null;
+  $("#scan").disabled = true;
+  $("#bar").classList.add("on");
+  $("#list").innerHTML = `<div class="empty"><h3>正在分析…</h3>
+    <div class="hint">首次跑全库会慢一些，之后有缓存，只算新增/改动过的文件</div></div>`;
+  try{
+    const r = await (await fetch("/api/scan",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({roots:raw, only_multi:true, use_cache:true})})).json();
+    if(r.error){ throw new Error(r.error); }
+    state.jobId = r.job_id;
+    poll();
+  }catch(e){
+    $("#status").innerHTML = `<span style="color:var(--bad)">启动失败：${esc(e.message)}</span>`;
+    $("#scan").disabled = false;
+  }
+};
+
+async function poll(){
+  if(!state.jobId) return;
+  let j;
+  try{ j = await (await fetch("/api/job/"+state.jobId)).json(); }
+  catch(e){ setTimeout(poll,1200); return; }
+
+  const p = j.progress||{};
+  const pct = p.total ? Math.min(100, p.done/p.total*100) : (j.state==="done"?100:6);
+  $("#bar").querySelector("i").style.width = pct+"%";
+  $("#status").innerHTML = `<span><b>${esc(p.phase||"…")}</b></span>
+    <span class="mono">${p.done||0}/${p.total||0}</span>
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.current||"")}</span>`;
+
+  if(j.state==="error"){
+    $("#status").innerHTML = `<span style="color:var(--bad)">出错：${esc(j.error||"")}</span>`;
+    $("#scan").disabled=false; $("#bar").classList.remove("on"); return;
+  }
+  if(j.state==="done"){
+    $("#bar").querySelector("i").style.width="100%";
+    setTimeout(()=>$("#bar").classList.remove("on"), 600);
+    $("#scan").disabled=false;
+    const data = await (await fetch("/api/result/"+state.jobId)).json();
+    state.data = data; render();
+    const st = data.stats||{};
+    $("#status").innerHTML = `<span>✅ 完成：<b>${st.songs_multi||0}</b> 首多版本曲目，
+      深度分析 <b>${st.files_analyzed||0}</b> 个文件，耗时 <b>${(st.elapsed_sec||0).toFixed(1)}s</b>，
+      结果已缓存（同目录重扫只算新文件）</span>`;
+    return;
+  }
+  setTimeout(poll, 600);
+}
+
+/* ---------------- 渲染 ---------------- */
+function render(){
+  const d = state.data;
+  if(!d){ return; }
+  const st = d.stats||{};
+  const groups = (d.groups||[]).filter(g=>g.versions.length>1);
+
+  let shown = groups.filter(g=>{
+    if(state.filter==="bad" && !g.versions.some(v=>(v.flags||[]).some(f=>f.level==="bad"))) return false;
+    if(state.q){
+      const s=(g.title+" "+g.versions.map(v=>v.album+v.name).join("")).toLowerCase();
+      if(!s.includes(state.q.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const kpi = `<div class="kpis">
+    <div class="kpi"><b>${st.files_probed||0}</b><span>扫描文件</span></div>
+    <div class="kpi"><b>${st.songs_total||0}</b><span>识别曲目</span></div>
+    <div class="kpi"><b>${st.songs_multi||0}</b><span>多版本曲目</span></div>
+    <div class="kpi"><b>${st.songs_with_problems||0}</b><span>含问题版本</span></div>
+    <div class="kpi"><b>${(st.elapsed_sec||0).toFixed(0)}s</b><span>耗时</span></div>
+  </div>
+  <div class="controls" style="background:none;border:none;padding:0 0 12px">
+    <input id="q" placeholder="搜索歌名 / 专辑" value="${esc(state.q)}" style="width:220px">
+    <button class="btn sm ${state.filter==='all'?'primary':'ghost'}" data-f="all">全部</button>
+    <button class="btn sm ${state.filter==='bad'?'primary':'ghost'}" data-f="bad">只看有问题</button>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm" id="expHtml">导出 HTML</button>
+      <button class="btn sm" id="expCsv">导出 CSV</button>
+    </div>
+  </div>`;
+
+  const rows = shown.map((g,i)=>groupHTML(g,i)).join("");
+  $("#list").innerHTML = kpi + (rows || `<div class="empty"><h3>没有匹配的多版本曲目</h3>
+    <div class="hint">确认目录里有同一首歌的多张专辑，或换一下筛选条件</div></div>`);
+
+  const q = $("#q");
+  q.oninput = e => { state.q = e.target.value; render();
+    const n=$("#q"); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length);} };
+  document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ state.filter=b.dataset.f; render(); });
+  $("#expHtml").onclick = ()=>window.open(`/api/export/${state.jobId}?fmt=html`);
+  $("#expCsv").onclick  = ()=>window.open(`/api/export/${state.jobId}?fmt=csv`);
+
+  document.querySelectorAll(".ghead").forEach(h=>{
+    h.onclick = () => h.parentElement.classList.toggle("open");
+  });
+  if(state.autoOpen != null){
+    const gs = document.querySelectorAll(".group");
+    const gi = gs[parseInt(state.autoOpen,10) || 0];
+    if(gi){ gi.classList.add("open"); state.autoOpen = null; }
+  }
+  document.querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick = async (e)=>{
+      e.stopPropagation();
+      const {act,path} = b.dataset;
+      if(act==="copy"){ navigator.clipboard.writeText(path); b.textContent="已复制"; return; }
+      try{
+        const r = await (await fetch("/api/action",{method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:act, path})})).json();
+        if(r.error) alert(r.error);
+      }catch(err){ alert(err); }
+    };
+  });
+}
+
+function groupHTML(g, idx){
+  const best = g.versions[0];
+  const bad = g.versions.some(v=>(v.flags||[]).some(f=>f.level==="bad"));
+  const head = `<div class="ghead">
+    <span class="caret">▶</span>
+    <div>
+      <div class="gtitle">${esc(g.title)}</div>
+      <div class="gsub">${esc(best.artist||"")} · ${g.versions.length} 个版本 · 推荐来自 ${esc(best.album||best.folder||"")}</div>
+    </div>
+    <span class="vcount">${g.versions.length} 版</span>
+    <div class="metric">${best.cutoff_khz}<span>截止 kHz</span></div>
+    <div class="metric">${best.dr_value??"—"}<span>DR 动态</span></div>
+    <div class="score ${scoreClass(best.score)}">${best.score}</div>
+    <span class="${bad?'dot-bad':'dot-ok'}"></span>
+  </div>`;
+
+  const adv = `<div class="advice ${bad?'':'ok'}">${esc(g.advice||"")}</div>`;
+  const vers = g.versions.map(v=>verHTML(v)).join("");
+  return `<div class="group" ${idx===0?"":""} id="g${idx}">${head}
+    <div class="gbody">${adv}<div class="vers">${vers}</div></div></div>`;
+}
+
+function verHTML(v){
+  const env = v.octave_envelope||[];
+  const maxdb = Math.max(...env.map(e=>e.db??-90), -20);
+  const bars = env.map(e=>{
+    const h = Math.max(2, Math.min(34, 34 - (maxdb-(e.db??maxdb-40))));
+    const cut = e.f > (v.cutoff_khz*1000*1.02);
+    return `<i class="${cut?'cut':''}" style="height:${h}px" title="${e.f}Hz ${e.db}dB"></i>`;
+  }).join("");
+
+  const flags = (v.flags||[]).map(f=>`<div class="flag ${f.level}">${esc(f.text)}</div>`).join("");
+  const notes = (v.notes||[]).slice(0,3).map(n=>`<div class="flag info">${esc(n)}</div>`).join("");
+  const bitBadge = (v.bit_depth>=24 && (v.flags||[]).some(f=>f.code==="UPSAMPLED"))
+    ? `<span class="badge bad">假 Hi-Res</span>`
+    : (v.flags||[]).some(f=>f.code==="FAKE_LOSSLESS") ? `<span class="badge bad">假无损</span>`
+    : (v.flags||[]).some(f=>f.code==="UPSAMPLED") ? `<span class="badge bad">升频</span>`
+    : `<span class="badge">${esc(v.codec||"")}</span>`;
+
+  return `<div class="ver ${v.is_best?'best':''}">
+    <div class="vtop">
+      <span class="rk">#${v.rank}</span>${v.is_best?'<span class="badge">推荐</span>':''}
+      ${bitBadge}
+      <span class="vscore ${scoreClass(v.score)}">${v.score}</span>
+    </div>
+    <div class="vname">${esc(v.name)}</div>
+    <div class="valbum">${esc(v.album||"")} ${v.date?"· "+esc(v.date):""} · ${fmtDur(v.duration)} · ${fmtSize(v.size_bytes)}</div>
+    <div class="spec">${bars}</div>
+    <div class="grid2">
+      <div class="cell"><div class="k">频谱截止</div>
+        <div class="v ${cutClass(v)}">${v.cutoff_khz}<i> / ${v.nyquist_khz} kHz</i></div></div>
+      <div class="cell"><div class="k">动态 DR</div>
+        <div class="v ${drClass(v.dr_value)}">${v.dr_value??"—"}<i> / DR16</i></div></div>
+      <div class="cell"><div class="k">有效位深</div>
+        <div class="v">${v.effective_bits??"—"}<i> of ${v.bit_depth} bit</i></div></div>
+      <div class="cell"><div class="k">采样率</div>
+        <div class="v">${(v.sample_rate/1000).toFixed(1)}<i> kHz</i></div></div>
+      <div class="cell"><div class="k">LUFS / LRA</div>
+        <div class="v">${v.lufs_i??"—"}<i> / ${v.lra??"—"} LU</i></div></div>
+      <div class="cell"><div class="k">真峰值</div>
+        <div class="v ${(v.true_peak_db>0.2)?'bad':''}">${v.true_peak_db??"—"}<i> dBTP</i></div></div>
+      <div class="cell"><div class="k">PLR 峰值/响度</div>
+        <div class="v ${(v.plr!=null && v.plr<10)?'warn':''}">${v.plr??"—"}<i> dB</i></div></div>
+      <div class="cell"><div class="k">声道相关</div>
+        <div class="v ${(v.channel_corr>=0.9995)?'warn':(v.channel_corr<-0.2?'bad':'')}">${v.channel_corr??"—"}<i> / 1.0</i></div></div>
+      <div class="cell"><div class="k">直流偏移</div>
+        <div class="v ${(v.dc_offset_db>-45)?'warn':''}">${v.dc_offset_db??"—"}<i> dBFS</i></div></div>
+    </div>
+    <div class="flags">${flags}${notes}</div>
+    <div class="vacts">
+      <button class="btn" data-act="spek" data-path="${esc(v.path)}">Spek 复核</button>
+      <button class="btn" data-act="reveal" data-path="${esc(v.path)}">定位文件</button>
+      <button class="btn" data-act="copy" data-path="${esc(v.path)}">复制路径</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------- 说明面板 ---------------- */
+const HELP = `
+<h4>这套工具在比什么</h4>
+<ul>
+<li><b>频谱上限</b>：真无损的内容一直延伸到奈奎斯特频率；被低通过的内容会在某处断崖，后面是数字底噪。这是识破「假无损」最硬的证据。</li>
+<li><b>有效位深</b>：把样本还原到定点网格，看最低多少位是真有用的。能识破「16bit 补零冒充 24bit」；<i>但不能</i> 识破重采样时加了抖动的假升位 —— 那种情况只能靠频谱。</li>
+<li><b>DR 动态</b>：TT DR Meter 同口径，3 秒分块算波峰因数，取最响的 20% 平均。DR 每高 3 dB，压缩痕迹就少一档。</li>
+<li><b>真峰值 / PLR</b>：采样峰值会漏掉采样点之间的过冲。真峰值过 0 dBTP 的母带，到 DAC 上会失真。</li>
+<li><b>削波计数</b>：真正数出被削平的样本数，比肉眼看波形靠谱。</li>
+<li><b>声道相关</b>：左右声道逐样本相关系数。≈1 说明两声道完全一样（单声道复制），负值说明反相 —— 单声道叠加会互相抵消。</li>
+<li><b>直流偏移</b>：整轨样本均值不为零就说明有 DC，白占动态余量，多是转录/抓轨环节引入。</li>
+<li><b>解码完整性</b>：解码时报几条错就记几条。坏块、截断会在这里先冒头，但细粒度损坏还要 flac -t / CUETools 复验。</li>
+</ul>
+<h4>几个坑</h4>
+<ul>
+<li>DR 低不等于音质差：有些老录音本身就是高压缩母带，低 DR 是它的原貌。</li>
+<li>频率上限高不等于好听：升频能把文件撑到 96 kHz，信息一点没多。</li>
+<li>同一个录音不同母带，DR 差 2–4 dB 很常见；差到 8 dB 以上通常就是两次不同的母带处理。</li>
+</ul>
+<h4>免费工具补位（我没内建、但值得装）</h4>
+<ul>
+<li><code>CUETools / CUERipper</code>：连 AccurateRip + CTDB 校验，回答「这张碟抓得对不对」，是比参数更根本的一层。</li>
+<li><code>Exact Audio Copy</code>：抓轨黄金标准，带 AccurateRip。</li>
+<li><code>foobar2000</code> + Dynamic Range Meter：DR 复核，可批量。</li>
+<li><code>loudgain / rsgain</code>：批量算 ReplayGain 2（EBU R128），命令行，适合整库。</li>
+<li><code>AuCDtect-Task / Tau Analyzer</code>：老牌真假无损判别（MPEG 残留检测），与本工具的频谱法互补。</li>
+<li><code>MusicBee / Mp3tag</code>：批量标签、封面、命名规整。</li>
+<li><code>Audacity / ocenaudio</code>：看波形、查 DC 偏移、做 ABX 前的电平对齐。</li>
+<li><code>MediaInfo</code>：容器/编码细节的权威读数。</li>
+</ul>
+<h4>为什么没有直接驱动 JRiver</h4>
+<p>JRiver 的 DR 值存在私有库里，只能通过它自己的 MCWS 接口读；本工具把同一套 DR 算法在本地实现，不依赖它开机。若你想要与 JRiver 库内数值逐条对齐，告诉我，我加一个 MCWS 适配层做交叉校验。</p>
+`;
+$("#helpBtn").onclick = ()=>{ $("#side").classList.add("open"); $("#sideBody").innerHTML = HELP; };
+$("#closeSide").onclick = ()=>$("#side").classList.remove("open");
+
+/* ================= 标签页 ================= */
+const VIEW_OF = {scan:"#viewScan", order:"#viewOrder", tools:"#viewTools"};
+function switchTab(tab){
+  const b = document.querySelector(`.tabs button[data-tab="${tab}"]`);
+  if(!b) return;
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on", x===b));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+  $(VIEW_OF[tab]||"#viewScan").classList.add("on");
+  if(tab==="tools") toolsInit();
+}
+document.querySelectorAll(".tabs button").forEach(b=>{
+  b.onclick = ()=>{
+    switchTab(b.dataset.tab);
+    if(b.dataset.tab==="order" && !ord.plan){ $("#oPath").focus(); }
+  };
+});
+
+/* ================= 播放顺序 ================= */
+const ord = {plan:null, manifests:[], last:null};
+const postJSON = async (u,b)=>(await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify(b)})).json();
+const getJSON = async u=>(await fetch(u)).json();
+
+$("#oPick").onclick = async ()=>{
+  const r = await postJSON("/api/pick-folder",{});
+  if(r.path){ $("#oPath").value = r.path; oScan(); } else if(r.error) alert(r.error);
+};
+$("#oClear").onclick = ()=>{ $("#oPath").value=""; };
+$("#oSort").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oPrefix").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oRecursive").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oScan").onclick = oScan;
+$("#oPath").onkeydown = e=>{ if(e.key==="Enter") oScan(); };
+
+function fsAdvice(plan){
+  const fs = (plan.fs||"").toUpperCase();
+  const fatLike = fs.includes("FAT");
+  if(!fs) return "";
+  if(fatLike) return `<div class="warnbox">检测到 <b>${esc(fs)}</b>：这类盘（U 盘/车载 SD）的目录就是一个按写入顺序追加的链表，
+    播放器很可能<b>按目录条目顺序</b>播。光改名可能不管用 —— 建议勾上「复制有序副本」，
+    再把 <code>_有序副本</code> 整个拷到 U 盘（拷进去的顺序就是播放顺序）。</div>`;
+  return `<div class="warnbox ok">文件系统 <b>${esc(fs)}</b>：目录本身按名称索引，
+    「改名 + 播放列表」通常就能定顺序；只有在车载机上还乱时，再考虑「复制有序副本」。</div>`;
+}
+
+async function oScan(){
+  const p = $("#oPath").value.trim();
+  if(!p){ $("#oStatus").innerHTML = '<span style="color:var(--bad)">先填文件夹路径</span>'; return; }
+  $("#oStatus").innerHTML = "<span>扫描中…</span>";
+  const plan = await postJSON("/api/order/plan", {
+    path:p, sort_by:$("#oSort").value, prefix:$("#oPrefix").value,
+    recursive:$("#oRecursive").checked
+  });
+  if(plan.error){
+    $("#oStatus").innerHTML = `<span style="color:var(--bad)">${esc(plan.error)}</span>`;
+    $("#oTable").innerHTML = "";
+    return;
+  }
+  ord.plan = plan;
+  const ms = await getJSON("/api/order/manifests?path="+encodeURIComponent(p));
+  ord.manifests = ms.items||[];
+  oRender();
+}
+
+function oRender(){
+  const p = ord.plan;
+  if(!p) return;
+  const st = p.stats||{};
+  const rows = p.files.map(f=>{
+    const dur = f.duration ? fmtDur(f.duration) : "—";
+    const coll = f.collision ? `<span class="meta2" style="color:var(--bad)">目标名已存在</span>` : "";
+    const same = !f.renamed;
+    return `<tr>
+      <td class="idx">${String(f.index).padStart(2,"0")}</td>
+      <td class="oldname">${esc(f.name)}</td>
+      <td style="color:var(--dim2);width:16px">→</td>
+      <td class="newname">${same?`<span style="color:var(--dim2)">（不变）</span>`:esc(f.new_name)}</td>
+      <td class="meta2">${dur}</td>
+      <td class="meta2">${fmtSize(f.size)}</td>
+      <td>${coll}</td>
+    </tr>`;
+  }).join("");
+
+  $("#oTable").innerHTML = `<table>
+    <thead><tr><th>#</th><th>现在的文件名</th><th></th><th>排序后的文件名</th>
+      <th>时长</th><th>大小</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+
+  const pyNote = p.pinyin ? "" :
+    `<div class="warnbox">没装拼音库，中文按码位排序（结果不是拼音序）。运行 <code>pip install pypinyin</code> 后再扫一次即可。</div>`;
+  $("#oNote").innerHTML = pyNote + fsAdvice(p);
+  $("#oStatus").innerHTML = `<span>共 <b>${st.count}</b> 个文件 ·
+    ${st.titles} 首歌 · ${st.artists} 位歌手 · 需改名 <b>${st.to_rename}</b> 个 ·
+    依据「${esc(p.sort_label)}」${ord.manifests.length?` · 该目录有 ${ord.manifests.length} 次历史操作`:""}</span>`;
+  $("#oActions").style.display = "flex";
+  $("#oSummary").textContent = `目标顺序已生成（只读预览，未改动文件）`;
+  $("#oApply").textContent = "应用（改名 + 播放列表）";
+  $("#oUndo").disabled = !ord.manifests.length;
+}
+
+$("#oApply").onclick = async ()=>{
+  const p = ord.plan; if(!p) return;
+  const acts = {rename:true, playlist:true, tags:$("#oTags").checked,
+                timestamps:$("#oTimes").checked, fatorder:$("#oFat").checked};
+  const n = p.stats.to_rename;
+  const extra = ["播放列表"];
+  if(acts.tags) extra.push("标签");
+  if(acts.timestamps) extra.push("时间戳");
+  if(acts.fatorder) extra.push("有序副本（占一份空间）");
+  const msg = `将在这个文件夹里执行：\n\n`
+    + `• 重命名 ${n} 个文件\n• 生成 ${extra.join("、")}\n\n`
+    + `目录：${p.folder}\n\n会写一份撤销清单，随时可一键还原。继续吗？`;
+  if(!confirm(msg)) return;
+
+  $("#oApply").disabled = true;
+  $("#oSummary").textContent = "执行中…";
+  const r = await postJSON("/api/order/apply", {
+    path:p.folder, sort_by:$("#oSort").value, prefix:$("#oPrefix").value,
+    actions:acts, confirm:true
+  });
+  $("#oApply").disabled = false;
+  if(r.error){ $("#oSummary").textContent = "失败："+r.error; return; }
+
+  ord.last = r;
+  const errN = (r.errors||[]).length;
+  const base = x => String(x).split(/[\\/]/).pop();
+  const okHTML = `<div class="warnbox ok">已执行：改名 <b>${r.renames||0}</b> 个
+    ${r.playlists?.length?`· 播放列表 ${r.playlists.map(base).join("、")}`:""}
+    ${r.copydir?`· 有序副本 <code>${esc(r.copydir)}</code>`:""}
+    ${errN?`<br>有 ${errN} 个文件没成功：${esc((r.errors[0]||{}).error||"")}`:""}
+    <br>撤销清单：<code>${esc(r.manifest||"")}</code></div>`;
+  await oScan();
+  $("#oNote").innerHTML = okHTML;
+  $("#oActions").style.display = "flex";
+  $("#oSummary").textContent = `已应用。${r.manifest?"可点右侧「撤销上次操作」还原":""}`;
+  $("#oUndo").disabled = false;
+};
+
+$("#oUndo").onclick = async ()=>{
+  const p = ord.plan; if(!p) return;
+  const ms = ord.manifests;
+  const target = (ord.last && ord.last.manifest) || (ms[0] && ms[0].manifest);
+  if(!target){ alert("这个目录没有撤销清单"); return; }
+  if(!confirm(`按撤销清单还原？\n\n${target}\n\n会倒回改名、恢复时间戳、删除本工具生成的播放列表。`)) return;
+  const r = await postJSON("/api/order/undo",{manifest:target});
+  if(r.error){ alert(r.error); return; }
+  alert(`已还原 ${r.restored} 个文件名。\n${r.note||""}`);
+  ord.last = null;
+  await oScan();
+};
+
+/* ================= 位对齐 / 响度 ================= */
+let toolsReady = false;
+async function toolsInit(){
+  if(toolsReady) return;
+  toolsReady = true;
+  try{
+    const st = await getJSON("/api/align/status");
+    $("#alCuestatus").innerHTML = st.cuetools
+      ? `CUETools 已安装 ✓（GUI 复核可用）`
+      : `CUETools 未安装 <a class="lnk" href="${st.download}" target="_blank">免费下载 ↗</a>（仅复核用，自动校验已内置）`;
+    const g = await getJSON("/api/gain/status");
+    if(!g.ok){
+      $("#gnOut").innerHTML = `<div class="warnbox">未找到 rsgain。官方便携包（免费 GPL）：
+        <a class="lnk" href="https://github.com/complexlogic/rsgain/releases" target="_blank">下载 ↗</a>，
+        解压到程序目录的 <code>tools/rsgain/</code> 后刷新页面即可。</div>`;
+    }
+  }catch(e){}
+}
+
+const AL_LABEL = {ok:"逐位一致", mismatch:"不一致", not_found:"库无记录",
+                  need_cue:"需整盘 cue", offline:"离线/查询失败", error:"出错"};
+function alBadge(s){
+  const cls = s==="ok" ? "" : (s==="mismatch"||s==="error" ? "bad" : "warn");
+  return `<span class="badge ${cls}">${AL_LABEL[s]||s}</span>`;
+}
+$("#alFind").onclick = async ()=>{
+  const p = $("#alPath").value.trim();
+  if(!p){ alert("先填目录"); return; }
+  const r = await getJSON("/api/align/find?path="+encodeURIComponent(p));
+  if(r.error){ $("#alOut").innerHTML = `<div class="warnbox">${esc(r.error)}</div>`; return; }
+  $("#alOut").innerHTML = r.count
+    ? `<div class="warnbox ok">找到 <b>${r.count}</b> 个 cue：
+         ${r.cues.slice(0,8).map(c=>`<div class="mono" style="font-size:11px">${esc(c)}</div>`).join("")}
+         ${r.count>8?`<div class="dim">…还有 ${r.count-8} 个</div>`:""}</div>`
+    : `<div class="warnbox">${esc(r.hint)}</div>`;
+};
+$("#alRun").onclick = async ()=>{
+  const p = $("#alPath").value.trim();
+  if(!p){ alert("先填目录"); return; }
+  const offline = $("#alOffline").checked;
+  $("#alOut").innerHTML = `<div class="statusline">校验中…（首次需解码整盘，稍候）</div>`;
+  try{
+    const r = await postJSON("/api/align/batch",{path:p, fetch:!offline});
+    if(!r.count){ $("#alOut").innerHTML = `<div class="warnbox">目录里没有 .cue 文件。位对齐需要整盘 cue + 原始抓轨，单曲文件物理上无法校验。</div>`; return; }
+    let ok=0, bad=0;
+    const rows = (r.results||[]).map(x=>{
+      if(x.status==="ok") ok++; else if(x.status==="mismatch"||x.status==="error") bad++;
+      const name = String(x.cue||"").split(/[\\/]/).pop();
+      const conf = x.best_confidence!=null ? ` · confidence ${x.best_confidence}` : "";
+      const cuectl = ffmpegReady && stCuetools
+        ? ` <a class="lnk" href="javascript:;" onclick="cueReview('${esc(x.cue)}')">CUETools 复核</a>` : "";
+      return `<tr><td>${esc(name)}</td><td>${alBadge(x.status)}</td>
+        <td style="font-family:inherit">${esc(x.reason||"")}${conf}${cuectl}</td></tr>`;
+    }).join("");
+    $("#alOut").innerHTML = `<div class="stat"><span>校验 <b>${r.count}</b> 张</span>
+        <span style="color:var(--ok)">一致 <b>${ok}</b></span>
+        <span style="color:var(--bad)">有问题 <b>${bad}</b></span></div>
+      <table class="minitbl"><thead><tr><th>cue</th><th>结果</th><th>说明</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }catch(e){ $("#alOut").innerHTML = `<div class="warnbox">校验失败：${esc(e.message||e)}</div>`; }
+};
+let ffmpegReady=false, stCuetools=false;
+getJSON("/api/align/status").then(s=>{ stCuetools=!!s.cuetools; ffmpegReady=true; }).catch(()=>{});
+window.cueReview = function(cue){
+  postJSON("/api/action",{action:"cuetools", path:cue}).then(r=>{
+    if(r.error) alert(r.error); else alert(r.note||"CUETools 已启动");
+  });
+};
+$("#gnRun").onclick = async ()=>{
+  const p = $("#gnPath").value.trim();
+  if(!p){ alert("先填目录"); return; }
+  const lufs = parseInt($("#gnLufs").value), noAlbum = $("#gnNoAlbum").checked;
+  $("#gnOut").innerHTML = `<div class="statusline">扫描中…（在临时副本上进行，原目录零改动）</div>`;
+  try{
+    const r = await postJSON("/api/gain/plan",{path:p, lufs, no_album:noAlbum});
+    if(r.error){ $("#gnOut").innerHTML = `<div class="warnbox">${esc(r.error)}${r.hint?" "+esc(r.hint):""}</div>`; return; }
+    const sm = r.summary||{};
+    const rows = (r.items||[]).map(it=>`<tr><td>${esc(it.name)}</td>
+      <td>${it.lufs??"—"}</td><td style="color:${(it.gain_db||0)>0?'var(--warn)':'var(--ok)'}">${it.gain_db>0?'+':''}${it.gain_db??"—"}</td>
+      <td>${it.peak_db??"—"}</td></tr>`).join("");
+    $("#gnOut").innerHTML = `<div class="stat">
+        <span>扫描 <b>${r.scanned}</b> 首</span>
+        <span>平均响度 <b>${sm.Average_Loudness||"—"}</b></span>
+        <span>平均增益 <b>${sm.Average_Gain||"—"}</b></span></div>
+      <table class="minitbl"><thead><tr><th>文件</th><th>LUFS</th><th>建议增益 dB</th><th>峰值 dB</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${(r.items||[]).length?`<div class="altrow">
+        <button class="btn sm" id="gnApply">确认写入 ReplayGain 标签</button>
+        <span class="dim">只改标签，不碰音频流，可随时重写撤销</span></div>`:""}
+      <div class="dim" style="font-size:11px;margin-top:6px">${esc(r.note||"")}</div>`;
+    const btn = $("#gnApply");
+    if(btn) btn.onclick = async ()=>{
+      if(!confirm(`确认写入 ReplayGain 标签？\n\n目录：${p}\n目标：${lufs} LUFS\n\n只写标签、不改音频流；可随时用 rsgain 重写以撤销。`)) return;
+      btn.disabled = true; btn.textContent = "写入中…";
+      const a = await postJSON("/api/gain/apply",{path:p, lufs, no_album:noAlbum, confirm:true});
+      btn.disabled = false; btn.textContent = "确认写入 ReplayGain 标签";
+      if(a.error){ alert(a.error); return; }
+      alert(`已写入 ${a.tagged} 个文件的 ReplayGain 标签。\n${a.note||""}`);
+    };
+  }catch(e){ $("#gnOut").innerHTML = `<div class="warnbox">扫描失败：${esc(e.message||e)}</div>`; }
+};
+
+$("#oHelp").onclick = ()=>{
+  $("#side").classList.add("open");
+  $("#sideBody").innerHTML = ORDER_HELP;
+};
+const ORDER_HELP = `
+<h4>为什么顺序会乱</h4>
+<ul>
+<li><b>目录条目顺序</b>：FAT32/exFAT 的目录是"追加链"，文件什么时候拷进来就排在什么位置。车载机、很多便携播放器直接按这个顺序播 —— 这就是你看到的"按保存时间"。</li>
+<li><b>WAV 没标签</b>：WAV 的 ID3 兼容性差，多数播放器读不到 track number，只好退化成按文件名。</li>
+<li><b>中文按字节比</b>：文件名排序时中文按 UTF-8 字节比较，得到的是码位序，既不是拼音也不是笔画。</li>
+</ul>
+<h4>四种手段，各治一种播放器</h4>
+<table style="width:100%;font-size:12px;border-collapse:collapse">
+<tr><th align="left">手段</th><th align="left">治谁</th><th align="left">代价</th></tr>
+<tr><td>文件名加序号</td><td>按文件名排序的（绝大多数）</td><td>改名</td></tr>
+<tr><td>m3u8 / m3u 列表</td><td>支持列表的（车载、foobar、JRiver）</td><td>多两个文件</td></tr>
+<tr><td>写标签（INFO+ID3）</td><td>按标签排序的（JRiver、MusicBee）</td><td>改文件内容</td></tr>
+<tr><td>时间戳排序</td><td>按"日期"排序的</td><td>改文件时间</td></tr>
+<tr><td>复制有序副本</td><td>按目录条目顺序读的 FAT/exFAT 设备</td><td>占一份空间</td></tr>
+</table>
+<h4>安全边界</h4>
+<ul>
+<li>默认只出方案，点「应用」并二次确认后才动文件。</li>
+<li>从不删文件；只改名、写标签、改时间、复制。</li>
+<li>每次应用都在 <code>.dupescope/undo-*.json</code> 落撤销清单，可一键倒回。</li>
+<li>目标名已存在时跳过该文件并报告，不覆盖。</li>
+</ul>
+<h4>拼音从哪来</h4>
+<p>用 <code>pypinyin</code> 逐字转拼音（无声调）后做自然序比较，所以"蔡琴 cai"排在"邓丽君 deng"前面。
+没装拼音库时退化为码位序，界面会明确警告。</p>
+<h4>建议的用法</h4>
+<ol>
+<li>先按「歌名 → 歌星」扫一遍，看顺序对不对；</li>
+<li>勾「写标签」，让 JRiver/MusicBee 也有 track 可排；</li>
+<li>如果目标机是车载 U 盘（exFAT），再勾「复制有序副本」，把副本拷进 U 盘；</li>
+<li>播放器若仍固执，直接放那个 .m3u8 给它。</li>
+</ol>
+`;
+
+health();
+
+/* 支持 http://127.0.0.1:8765/?auto=D:\Music 直接开跑，可存成书签
+   也支持 ?tab=order&dir=D:\Music\同一首歌 直接跳到排序页 */
+(function(){
+  const q = new URLSearchParams(location.search);
+  if(q.get("tab")==="order"){
+    const b = document.querySelector('.tabs button[data-tab="order"]');
+    if(b) b.click();
+    if(q.get("dir")){ $("#oPath").value = q.get("dir"); setTimeout(oScan, 300); }
+    return;
+  }
+  if(q.get("tab")==="tools"){
+    switchTab("tools");
+    if(q.get("dir")){ $("#alPath").value = q.get("dir"); $("#gnPath").value = q.get("dir"); }
+    return;
+  }
+  if(q.get("auto")){ $("#rootInput").value = q.get("auto"); setTimeout(()=>$("#scan").click(), 350); }
+  state.autoOpen = q.get("open");
+})();
+</script>
+</body></html>

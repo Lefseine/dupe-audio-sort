@@ -3,7 +3,7 @@ name: dupe-audio-sort-user-ac60b2be
 slug: dupe-audio-sort-user-ac60b2be
 displayName: 同曲音质对比 · 挑出最佳版本
 displayName_en: Compare Same-Track Versions, Pick the Best
-version: 1.2.3
+version: 1.3.0
 summary: 同一首歌散落在多张专辑？自动对比频谱上限、位深、动态范围与削波，告诉你该留哪一版；并修正多版本文件夹的播放顺序。纯本地、免费、不上传音频。
 description: |
   把散落在多张专辑里的同一首歌找出来，用硬指标（频谱上限、有效位深、DR 动态、真峰值、削波、声道相关、DC 偏移）排出该留哪版；
@@ -24,6 +24,8 @@ examples_zh:
   - 分析 D:\Music 里《恰似你的温柔》各版本，告诉我留哪个
   - 把《同一首歌》文件夹按歌星拼音排序并生成播放列表
   - 检查这几张 CD 抓轨有没有报错（位对齐）
+  - 首页选「跨专辑挑同名歌」，从蔡琴的多张专辑里挑《恰似你的温柔》对比
+  - 首页选「同一张专辑多来源择优」，整盘逐首比较哪个下载源更好
 examples_en:
   - Analyze all versions of a song in my music folder and tell me which to keep
   - Sort my same-song folder by artist name and generate a playlist

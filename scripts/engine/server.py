@@ -32,6 +32,102 @@ WEB = ROOT / "web"
 DATA = Path(os.environ.get("DUPE_HOME") or ROOT)  # 数据根：报告/缓存可被技能重定向
 JOBS: dict[str, dict] = {}
 _CREATE_NO_WINDOW = 0x08000000
+_RECENT = DATA / ".dupescope" / "recent.json"
+
+
+def _recent_paths() -> list[str]:
+    """记住最近分析过的根目录，供「拖入文件夹反查路径」优先使用。"""
+    try:
+        v = json.loads(_RECENT.read_text(encoding="utf-8"))
+        return [x for x in v if isinstance(x, str)][:20]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _remember(paths) -> None:
+    try:
+        merged: list[str] = []
+        for p in list(paths or []) + _recent_paths():
+            s = str(p)
+            if s not in merged:
+                merged.append(s)
+        _RECENT.parent.mkdir(parents=True, exist_ok=True)
+        _RECENT.write_text(json.dumps(merged[:20], ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _resolve_folder(name: str) -> list[str]:
+    """浏览器拖入文件夹只能拿到名字；据此在合理范围内浅层反查绝对路径。
+
+    最近用过的目录优先，其次是家目录 / Music / 各盘符的前两层。只做浅层扫描，
+    跳过系统目录，找到即停，避免全盘遍历拖慢界面。找不到时前端会回退到原生对话框。
+    """
+    raw = (name or "").strip().strip('"').strip("/\\")
+    target = raw.split("/")[-1].split("\\")[-1].casefold()
+    if not target or target in (".", ".."):
+        return []
+
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def consider(p: Path) -> None:
+        if p.name.casefold() != target:
+            return
+        key = str(p).casefold()
+        if key in seen:
+            return
+        try:
+            if not p.is_dir():
+                return
+        except OSError:
+            return
+        seen.add(key)
+        found.append(str(p))
+
+    starts: list[tuple[Path, int]] = []
+    for s in _recent_paths():
+        pp = Path(s)
+        if pp.is_dir():
+            starts.append((pp.parent, 3))
+    h = Path.home()
+    starts += [(h, 2), (h / "Music", 3), (h / "音乐", 3)]
+    skip = {"AppData", "Windows", "Program Files", "Program Files (x86)",
+            "node_modules", "__pycache__", "$Recycle.Bin", "System Volume Information"}
+    for drv in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+        d = Path(f"{drv}:\\")
+        if d.exists():
+            starts.append((d, 2))
+
+    for base, maxdepth in starts:
+        if found:
+            break
+        try:
+            base = base.resolve()
+        except OSError:
+            continue
+        consider(base)
+        if found:
+            break
+        visited = 0
+        for cur, dirs, _ in os.walk(base):
+            try:
+                depth = len(Path(cur).relative_to(base).parts)
+            except ValueError:
+                break
+            if depth >= maxdepth:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs
+                       if d not in skip and not d.startswith((".", "$", "~"))]
+            for d in dirs:
+                consider(Path(cur) / d)
+                if found:
+                    break
+            visited += 1
+            if found or visited > 2500:
+                break
+    return found[:8]
 
 
 def _new_job() -> dict:
@@ -50,6 +146,7 @@ def _new_job() -> dict:
 
 def _run_job(job: dict, opts: dict) -> None:
     job["state"] = "running"
+    _remember(opts.get("roots") or [])
 
     def on_progress(p: dict) -> None:
         job["progress"] = p
@@ -126,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/static/"):
             return self._file(WEB / p[len("/static/"):])
         if p == "/api/health":
-            return self._json({"ok": True, "tools": ffmpeg_bin.check(), "version": "1.2",
+            return self._json({"ok": True, "tools": ffmpeg_bin.check(), "version": "1.3.0",
                                "order": {"pinyin": od.pinyin_available(),
                                          "sort_modes": od.SORT_MODES}})
         if p == "/api/order/manifests":
@@ -151,6 +248,12 @@ class Handler(BaseHTTPRequestHandler):
                                "note": "位对齐自动实现已内置；CUETools 仅用于 GUI 目视复核"})
         if p == "/api/gain/status":
             return self._json(gn.check())
+        if p == "/api/resolve-folder":
+            # 拖拽文件夹时浏览器只给名字，这里在合理范围内浅层反查绝对路径
+            name = (q.get("name") or [""])[0]
+            hits = _resolve_folder(name)
+            return self._json({"name": name, "paths": hits, "count": len(hits),
+                               "hint": "" if hits else "没定位到，请点「选文件夹」手动选"})
         if p == "/api/drives":
             drives = []
             for d in "CDEFGHIJKLMNOPQRSTUVWXYZ":

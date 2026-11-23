@@ -223,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/static/"):
             return self._file(WEB / p[len("/static/"):])
         if p == "/api/health":
-            return self._json({"ok": True, "tools": ffmpeg_bin.check(), "version": "1.3.0",
+            return self._json({"ok": True, "tools": ffmpeg_bin.check(), "version": "1.4.0",
                                "order": {"pinyin": od.pinyin_available(),
                                          "sort_modes": od.SORT_MODES}})
         if p == "/api/order/manifests":

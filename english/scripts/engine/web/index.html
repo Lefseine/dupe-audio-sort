@@ -1,0 +1,1337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DupeScope · Multi-Version Audio Comparator</title>
+<style>
+:root{
+  --bg:#0e1014; --panel:#151922; --panel2:#1b2029; --line:#252b36; --line2:#2f3745;
+  --fg:#e7eaf0; --dim:#8b95a7; --dim2:#626c7d;
+  --acc:#4d8dff; --ok:#2ecc8f; --warn:#f0a92e; --bad:#ff5b62; --gold:#ffd25b;
+  --mono:"JetBrains Mono",Consolas,"Cascadia Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.55 "Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;cursor:pointer;border:none;border-radius:8px}
+input,select{font:inherit;background:#0c0f14;border:1px solid var(--line2);color:var(--fg);
+  border-radius:8px;padding:8px 10px;outline:none}
+input:focus{border-color:var(--acc)}
+.mono{font-family:var(--mono)}
+
+/* ---------- 顶栏 ---------- */
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);
+  border-bottom:1px solid var(--line);flex:none}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;letter-spacing:.2px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--acc);
+  box-shadow:0 0 12px var(--acc)}
+.brand small{font-weight:400;color:var(--dim);font-size:12px;margin-left:2px}
+.pills{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.pill{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);
+  background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 9px}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--dim2)}
+.pill.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.pill.off i{background:var(--bad)}
+
+/* ---------- 控制区 ---------- */
+.controls{display:flex;gap:8px;align-items:center;padding:12px 18px;background:#101319;
+  border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+.pathbox{flex:1;min-width:260px;position:relative}
+.pathbox input{width:100%;padding-right:34px}
+.pathbox .clr{position:absolute;right:6px;top:6px;background:none;color:var(--dim2);
+  font-size:16px;padding:2px 6px}
+.chipset{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--dim)}
+.chipset label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line2);padding:8px 14px}
+.btn:hover{border-color:var(--acc)}
+.btn.primary{background:linear-gradient(180deg,#4d8dff,#3a72d8);border-color:#5a97ff;
+  color:#fff;font-weight:600}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px}
+
+/* ---------- 进度 ---------- */
+.progress{height:3px;background:#0a0c10;flex:none;overflow:hidden;display:none}
+.progress.on{display:block}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#4dd8c0);
+  width:0;transition:width .3s}
+.statusline{padding:7px 18px;font-size:12px;color:var(--dim);background:#0c0f14;
+  border-bottom:1px solid var(--line);display:flex;gap:14px;flex:none;min-height:33px;align-items:center}
+.statusline b{color:var(--fg);font-weight:600}
+.statusline .spacer{flex:1}
+.btn-cancel{display:none;background:rgba(255,91,98,.12);border:1px solid rgba(255,91,98,.4);
+  color:#ff9aa0;font-size:11.5px;padding:3px 12px;border-radius:6px;cursor:pointer;flex:none}
+.btn-cancel:hover{background:rgba(255,91,98,.22);color:#ffc0c4}
+.btn-cancel.on{display:inline-block}
+
+/* ---------- 主体 ---------- */
+main{flex:1;display:flex;overflow:hidden}
+#list{flex:1;overflow:auto;padding:14px 18px 40px}
+.side{width:0;overflow:hidden;border-left:1px solid var(--line);background:var(--panel);
+  transition:width .18s;display:flex;flex-direction:column}
+.side.open{width:430px}
+.side .sidehead{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:8px;flex:none}
+.side .sidehead b{font-size:13px}
+.side .sidebody{overflow:auto;padding:14px;font-size:12.5px;color:var(--dim);line-height:1.75}
+.side .sidebody h4{color:var(--fg);margin:16px 0 6px;font-size:13px}
+.side .sidebody code{font-family:var(--mono);background:#0c0f14;padding:1px 5px;border-radius:4px;
+  color:#9fc4ff;font-size:11.5px}
+.side .sidebody ul{padding-left:18px;margin:4px 0}
+.side .sidebody li{margin:3px 0}
+
+/* ---------- 概览 ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px}
+.kpi b{display:block;font-size:19px;font-family:var(--mono)}
+.kpi span{font-size:11.5px;color:var(--dim)}
+
+/* ---------- 曲目组 ---------- */
+.group{background:var(--panel);border:1px solid var(--line);border-radius:11px;margin-bottom:9px;
+  overflow:hidden}
+.ghead{display:grid;grid-template-columns:26px 1fr 92px 108px 84px 74px 20px;gap:10px;
+  align-items:center;padding:11px 14px;cursor:pointer}
+.ghead:hover{background:var(--panel2)}
+.caret{color:var(--dim2);transition:transform .15s;font-size:11px}
+.group.open .caret{transform:rotate(90deg)}
+.gtitle{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsub{font-size:11.5px;color:var(--dim);font-weight:400;margin-top:1px}
+.vcount{font-size:11.5px;color:var(--dim);background:#0d1016;border:1px solid var(--line);
+  border-radius:20px;padding:2px 8px;justify-self:start;white-space:nowrap}
+.metric{font-family:var(--mono);font-size:12.5px;text-align:right}
+.metric span{display:block;font-size:10px;color:var(--dim2);font-family:inherit}
+.score{font-family:var(--mono);font-size:16px;font-weight:700;text-align:right}
+.dot-bad{width:7px;height:7px;border-radius:50%;background:var(--bad);
+  box-shadow:0 0 8px var(--bad);justify-self:center}
+.dot-ok{width:7px;height:7px;border-radius:50%;background:var(--ok);opacity:.5;justify-self:center}
+
+.gbody{display:none;border-top:1px solid var(--line);padding:12px 14px 16px;background:#111520}
+.group.open .gbody{display:block}
+.advice{background:#1d1a10;border-left:3px solid var(--gold);color:#ffe6a6;font-size:12.5px;
+  padding:8px 11px;border-radius:0 7px 7px 0;margin-bottom:12px;line-height:1.6}
+.advice.ok{background:#0f1d18;border-left-color:var(--ok);color:#a9e9cf}
+
+.vers{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:11px}
+.ver{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;
+  position:relative}
+.ver.best{border-color:rgba(46,204,143,.55);background:linear-gradient(180deg,#14201c,#171d24)}
+.vtop{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.rk{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line2);
+  border-radius:5px;padding:1px 6px}
+.vscore{margin-left:auto;font-family:var(--mono);font-weight:700;font-size:15px}
+.badge{font-size:10.5px;font-weight:700;border-radius:20px;padding:1px 8px;
+  background:rgba(46,204,143,.16);color:var(--ok);border:1px solid rgba(46,204,143,.35)}
+.badge.bad{background:rgba(255,91,98,.14);color:#ff9aa0;border-color:rgba(255,91,98,.35)}
+.badge.warn{background:rgba(240,169,46,.14);color:#ffca7a;border-color:rgba(240,169,46,.35)}
+.vname{font-weight:600;font-size:13px;word-break:break-all;line-height:1.4}
+.valbum{font-size:11.5px;color:var(--dim);margin:2px 0 9px;word-break:break-all}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-bottom:9px}
+.cell{background:#0d1117;border:1px solid #1e242e;border-radius:7px;padding:5px 8px}
+.cell .k{font-size:10.5px;color:var(--dim2)}
+.cell .v{font-family:var(--mono);font-size:13px;font-weight:600}
+.cell .v i{font-style:normal;font-size:10.5px;color:var(--dim);font-weight:400}
+.cell .v.bad{color:#ff8d93}.cell .v.warn{color:#ffca7a}.cell .v.ok{color:#7fe3ba}
+.spec{display:flex;align-items:flex-end;gap:2px;height:34px;margin:2px 0 8px}
+.spec i{flex:1;background:linear-gradient(180deg,#4d8dff,#2a4d8f);border-radius:1px 1px 0 0;
+  min-height:2px;opacity:.85}
+.spec i.cut{background:#3a3f4a}
+.spec-axis{position:relative;height:13px;margin:-6px 0 6px;border-top:1px solid #242b36;
+  font-size:9px;color:var(--dim2)}
+.spec-axis .tick{position:absolute;top:2px;transform:translateX(-50%);white-space:nowrap}
+.spec-axis .tick.end{right:0;left:auto!important;transform:none}
+.spec-axis .cutline{position:absolute;top:-1px;bottom:-3px;width:1px;background:#ff9aa0}
+.spec-cut-label{font-size:10px;color:#ffca7a;margin:-4px 0 7px;text-align:right}
+.verdict-caveat{font-size:11.5px;color:#ffca7a;line-height:1.5;margin-top:6px;
+  padding-top:6px;border-top:1px dashed rgba(240,169,46,.3)}
+.flags{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.flag{font-size:11.5px;padding:5px 8px;border-radius:6px;line-height:1.5}
+.flag.bad{background:rgba(255,91,98,.1);color:#ffa8ad;border-left:2px solid var(--bad)}
+.flag.warn{background:rgba(240,169,46,.1);color:#ffcf8a;border-left:2px solid var(--warn)}
+.flag.info{background:rgba(77,141,255,.08);color:#a8c4f5;border-left:2px solid var(--acc)}
+.vacts{display:flex;gap:6px;margin-top:2px}
+.vacts .btn{flex:1;background:#0e1219;border:1px solid #242b36;color:var(--dim);font-size:11.5px;
+  padding:5px 4px}
+.vacts .btn:hover{color:var(--fg);border-color:var(--acc)}
+.empty{text-align:center;padding:70px 20px;color:var(--dim2)}
+.empty h3{color:var(--dim);font-weight:600;margin:0 0 6px}
+.hint{font-size:12px;color:var(--dim2);margin-top:6px}
+
+/* ---------- 傻瓜智能：拖拽 / 引导 / 白话结论 ---------- */
+.dropmask{position:fixed;inset:0;z-index:80;background:rgba(14,16,20,.9);
+  border:3px dashed var(--acc);display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:8px;color:var(--fg);pointer-events:none}
+.dropmask.on{display:flex}
+.dropmask b{font-size:22px}
+.dropmask span{font-size:13px;color:var(--dim)}
+.wizard{background:linear-gradient(90deg,#152238,#151922);border:1px solid #2b4266;
+  border-radius:10px;padding:12px 15px;margin-bottom:13px;display:flex;
+  align-items:center;gap:12px;flex-wrap:wrap}
+.wizard .wn{flex:1;min-width:240px}
+.wizard b{display:block;font-size:13.5px;color:#cfe0ff;margin-bottom:3px}
+.wizard span{font-size:12px;color:var(--dim)}
+.wizard ol{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--dim);line-height:1.7}
+.wizard .btn.sm{white-space:nowrap}
+
+/* ---------- First-level scenario picker ---------- */
+.scenes{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:14px}
+.scene{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:14px 15px;cursor:pointer;transition:border-color .15s,background .15s,transform .1s;
+  display:flex;flex-direction:column;gap:7px;position:relative;min-height:132px}
+.scene:hover{border-color:var(--line2);background:var(--panel2);transform:translateY(-1px)}
+.scene.on{border-color:var(--acc);background:linear-gradient(180deg,#17263d,#151922)}
+.scene .sc-t{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--fg)}
+.scene .sc-n{width:22px;height:22px;flex:none;border-radius:6px;background:var(--panel2);
+  border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:var(--dim)}
+.scene.on .sc-n{background:var(--acc);border-color:var(--acc);color:#fff}
+.scene .sc-d{font-size:12px;color:var(--dim);line-height:1.6;flex:1}
+.scene .sc-h{font-size:11px;color:var(--dim2);border-top:1px dashed var(--line);padding-top:7px}
+.scene.on .sc-h{color:#9dbcf5}
+.scene-wrap{align-items:center;gap:9px;flex-wrap:wrap;margin:-4px 0 13px;
+  padding:0 2px;display:none}
+.scene-wrap.on{display:flex}
+.scene-wrap label{font-size:12px;color:var(--dim)}
+@media(max-width:820px){.scenes{grid-template-columns:1fr}.scene{min-height:0}}
+.verdict{background:#14201c;border:1px solid rgba(46,204,143,.35);border-left:4px solid var(--ok);
+  border-radius:9px;padding:11px 14px;margin:2px 0 13px}
+.verdict.bad{background:#201618;border-color:rgba(255,91,98,.35);border-left-color:var(--bad)}
+.verdict .vh{font-size:11px;color:var(--dim);letter-spacing:.5px;margin-bottom:4px}
+.verdict .vt{font-size:14px;color:#dff5e8;line-height:1.6}
+.verdict.bad .vt{color:#ffd9dc}
+.verdict .vt b{color:var(--ok)}
+.verdict.bad .vt b{color:var(--bad)}
+.smart-hint{font-size:11.5px;color:var(--acc);margin-left:6px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2a313d;border-radius:6px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 目录浏览弹层 ---------- */
+.modal{position:fixed;inset:0;background:rgba(6,8,11,.72);display:none;align-items:center;
+  justify-content:center;z-index:50;backdrop-filter:blur(2px)}
+.modal.on{display:flex}
+.mbox{width:min(720px,92vw);max-height:82vh;background:var(--panel);border:1px solid var(--line2);
+  border-radius:12px;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.mhead{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
+.mhead b{font-size:14px}
+.mpath{font-family:var(--mono);font-size:11.5px;color:var(--dim);padding:8px 15px;
+  background:#0c0f14;border-bottom:1px solid var(--line);word-break:break-all}
+.mlist{overflow:auto;padding:6px;flex:1;min-height:180px}
+.mrow{display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:7px;
+  cursor:pointer;font-size:13px}
+.mrow:hover{background:var(--panel2)}
+.mrow .ico{color:var(--gold);font-size:12px}
+.mrow .cnt{margin-left:auto;font-size:11px;color:var(--dim2);font-family:var(--mono)}
+.mfoot{display:flex;align-items:center;gap:8px;padding:11px 15px;border-top:1px solid var(--line);
+  background:#101319}
+.mfoot .dim{color:var(--dim);font-size:11.5px}
+
+/* ---------- 标签页 ---------- */
+.tabs{display:flex;gap:4px;background:#0c0f14;border:1px solid var(--line);border-radius:10px;padding:3px}
+.tabs button{background:transparent;color:var(--dim);padding:5px 13px;border-radius:7px;font-size:12.5px}
+.tabs button.on{background:var(--panel2);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line2)}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+
+/* ---------- 排序视图 ---------- */
+.obar{display:flex;gap:14px;align-items:center;padding:10px 18px;background:#101319;
+  border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
+.obar label{font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+.obar select{padding:6px 9px}
+.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--fg);cursor:pointer}
+.chk input{accent-color:var(--acc)}
+.tblwrap{flex:1;overflow:auto;padding:6px 16px 20px}
+.tblwrap table{width:100%;border-collapse:collapse;font-size:13px}
+.tblwrap th{position:sticky;top:0;background:var(--bg);text-align:left;font-weight:500;
+  color:var(--dim);font-size:11px;letter-spacing:.5px;padding:8px;border-bottom:1px solid var(--line2);z-index:2}
+.tblwrap td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tblwrap tr:hover td{background:#141922}
+.idx{font-family:var(--mono);color:var(--gold);width:36px}
+.oldname{font-family:var(--mono);font-size:12px;color:var(--dim);word-break:break-all}
+.newname{font-family:var(--mono);font-size:12px;color:var(--ok);word-break:break-all}
+.meta2{color:var(--dim2);font-size:11.5px;white-space:nowrap}
+.warnbox{margin:10px 18px 0;border:1px solid #58401a;background:#1d1710;color:#f0c07a;
+  border-radius:9px;padding:10px 13px;font-size:12.5px;line-height:1.65}
+.warnbox.ok{border-color:#1d4437;background:#0f1a16;color:#7fe0b6}
+.warnbox b{color:inherit}
+
+/* ---------- 位对齐 / 响度工具页 ---------- */
+.toolgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px;
+  overflow:auto;flex:1;align-content:start}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tcard>h3{margin:0;padding:12px 15px;font-size:14px;border-bottom:1px solid var(--line);
+  background:var(--panel2);display:flex;align-items:center;gap:8px}
+.tcard>h3 .tag{font-size:10.5px;font-weight:400;color:var(--dim);border:1px solid var(--line2);
+  border-radius:10px;padding:1px 8px;margin-left:auto}
+.tbody{padding:13px 15px}
+.tbody p{margin:0 0 10px;font-size:12.5px;color:var(--dim);line-height:1.6}
+.tbody .pathline{display:flex;gap:7px;margin-bottom:10px}
+.tbody .pathline input{flex:1;min-width:0;font-size:12.5px}
+.stat{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin:8px 0}
+.stat b{color:var(--fg);font-family:var(--mono)}
+.minitbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.minitbl th{text-align:left;color:var(--dim2);font-weight:500;padding:5px 6px;
+  border-bottom:1px solid var(--line)}
+.minitbl td{padding:5px 6px;border-bottom:1px solid var(--line);font-family:var(--mono)}
+.badge{display:inline-block;font-size:10.5px;border-radius:8px;padding:1px 7px;
+  background:#182b24;color:#7fe3ba;border:1px solid #1d4437}
+.badge.bad{background:#2b181a;color:#ff9ba0;border-color:#5a2328}
+.badge.warn{background:#2b2418;color:#ffce7a;border-color:#5a4823}
+.altrow{display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap}
+a.lnk{color:var(--acc);text-decoration:none;font-size:12px}
+a.lnk:hover{text-decoration:underline}
+@media(max-width:900px){.toolgrid{grid-template-columns:1fr}}
+.actions-row{display:flex;align-items:center;gap:9px;padding:10px 18px;border-top:1px solid var(--line);
+  background:#101319;flex:none;flex-wrap:wrap}
+.actions-row .spacer{flex:1}
+</style>
+</head>
+<body>
+
+<div class="dropmask" id="dropmask">
+  <b>Release to start analysis</b>
+  <span>Drop your music folder here · Fully local, nothing is uploaded</span>
+</div>
+
+<header>
+  <div class="brand"><span class="dot"></span>DupeScope<small>Version comparison · Order fixing</small></div>
+  <div class="tabs">
+    <button data-tab="scan" class="on">Version Check</button>
+    <button data-tab="order">Playback Order</button>
+    <button data-tab="tools">Bit Alignment · Loudness</button>
+  </div>
+  <div class="pills" id="pills"></div>
+</header>
+
+<div class="view on" id="viewScan">
+
+<div class="scenes" id="scenes">
+  <div class="scene on" data-scene="cross">
+    <div class="sc-t"><span class="sc-n">1</span>Pick same song across albums</div>
+    <div class="sc-d">Many albums from one artist, but you only want <b>one or a few songs</b> compared across them. Select the parent folder of those albums, then enter the song title.</div>
+    <div class="sc-h">e.g. find "A Thousand Miles" across 20 albums → select the artist folder + enter title</div>
+  </div>
+  <div class="scene" data-scene="album">
+    <div class="sc-t"><span class="sc-n">2</span>One album, multiple sources</div>
+    <div class="sc-d">One album exists in several copies (different download sources / your own CD rips); you want to <b>pick the best track by track</b>. Put those copies in one folder.</div>
+    <div class="sc-h">e.g. FLAC / rip / cloud copies of one album together → select that folder, compare the whole disc</div>
+  </div>
+  <div class="scene" data-scene="free">
+    <div class="sc-t"><span class="sc-n">3</span>Free analysis · I'll specify</div>
+    <div class="sc-d">My folders are already organized. Just <b>drag them in or paste a path</b> to analyze. Separate multiple folders with ; — scan anything.</div>
+    <div class="sc-h">For advanced users: cross-directory, any folder combination</div>
+  </div>
+</div>
+
+<div class="scene-wrap" id="sceneWrap">
+  <label id="songLabel">Song titles to find (separate with ;, blank = whole disc):</label>
+  <input id="songInput" placeholder="e.g. Song One; Song Two" style="flex:1;min-width:220px" spellcheck="false">
+</div>
+
+<div class="controls">
+  <div class="pathbox">
+    <input id="rootInput" placeholder="Paste an album root folder, or click &quot;Choose Folder&quot;… Separate multiple folders with ;"
+           spellcheck="false">
+    <button class="clr" id="clearRoot" title="Clear">×</button>
+  </div>
+  <button class="btn" id="pick">Choose Folder</button>
+  <button class="btn" id="browse">Browse</button>
+  <button class="btn primary" id="scan">Smart Analyze</button>
+  <button class="btn ghost" id="helpBtn" title="Metric guide / free tool list">?</button>
+</div>
+
+<div class="progress" id="bar"><i></i></div>
+<div class="statusline" id="status">
+  <span id="statusText">Ready. By default only tracks with multiple versions are deeply analyzed; all others only read metadata — even a 100 GB library runs fine.</span>
+  <span class="spacer"></span>
+  <button class="btn-cancel" id="cancelScan" title="Stop this scan">Cancel scan</button>
+</div>
+
+<main>
+  <div id="list">
+    <div class="wizard" id="wizard">
+      <div class="wn">
+        <b>First time here? Three steps are all you need</b>
+        <ol>
+          <li><b>Drag your music folder into this window</b> (or click &quot;Choose Folder&quot;)</li>
+          <li>Click &quot;Smart Analyze&quot; — no parameters to understand</li>
+          <li>Read the <b>plain-English verdict</b> for each song — it tells you which version to keep</li>
+        </ol>
+      </div>
+      <button class="btn sm" id="wizardPick">Pick a folder to start</button>
+      <button class="btn sm ghost" id="wizardClose">Got it</button>
+    </div>
+    <div class="empty">
+      <h3>Just drag your music folder in</h3>
+      <div>I'll automatically find every version of each song and tell you in plain English which one to keep and why</div>
+      <div class="hint">Fully automatic comparison: spectral cutoff · effective bit depth · DR dynamics · clipping · transcoding traces · loudness</div>
+      <div class="hint">Runs entirely locally — no audio files are uploaded</div>
+    </div>
+  </div>
+  <aside class="side" id="side">
+    <div class="sidehead"><b>Metrics &amp; Tools</b><button class="btn sm ghost" id="closeSide"
+      style="margin-left:auto">×</button></div>
+    <div class="sidebody" id="sideBody"></div>
+  </aside>
+</main>
+</div><!-- /viewScan -->
+
+<div class="view" id="viewOrder">
+  <div class="controls">
+    <div class="pathbox">
+      <input id="oPath" placeholder="Paste a folder path such as &quot;Same Song&quot;, or click &quot;Choose Folder&quot;…" spellcheck="false">
+      <button class="clr" id="oClear" title="Clear">×</button>
+    </div>
+    <button class="btn" id="oPick">Choose Folder</button>
+    <button class="btn primary" id="oScan">Scan Order</button>
+    <button class="btn ghost" id="oHelp" title="Why order gets messed up / which method fixes which player">?</button>
+  </div>
+
+  <div class="obar">
+    <label>Sort by
+      <select id="oSort">
+        <option value="title">Title → Artist (Pinyin)</option>
+        <option value="artist">Artist → Title (Pinyin)</option>
+        <option value="name">Current filename (natural order)</option>
+        <option value="mtime">File timestamp</option>
+      </select>
+    </label>
+    <label>Number format
+      <select id="oPrefix">
+        <option value="num">01 Title - Artist</option>
+        <option value="numdot">01.Title - Artist</option>
+        <option value="numdash">01-Title - Artist</option>
+        <option value="none">No numbering</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="oRecursive">Include subfolders</label>
+    <label class="chk"><input type="checkbox" id="oTags">Write tags</label>
+    <label class="chk"><input type="checkbox" id="oTimes">Change timestamps</label>
+    <label class="chk"><input type="checkbox" id="oFat">Copy ordered duplicate</label>
+  </div>
+
+  <div id="oNote"></div>
+  <div class="statusline" id="oStatus"><span>Choose a folder to preview the plan first — no files are changed by default.</span></div>
+
+  <div class="tblwrap" id="oTable">
+    <div class="empty"><h3>No plan yet</h3>
+      <div>This will sort each artist's version of the same song by Pinyin and provide rename / playlist suggestions</div>
+      <div class="hint">Root cause: on FAT/exFAT, directory order = file write order, and WAV has no track tags, so players can only play in write order</div>
+    </div>
+  </div>
+
+  <div class="actions-row" id="oActions" style="display:none">
+    <span class="dim" id="oSummary"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="oUndo">Undo Last Operation</button>
+    <button class="btn primary" id="oApply">Apply</button>
+  </div>
+</div><!-- /viewOrder -->
+
+<div class="view" id="viewTools">
+  <div class="toolgrid">
+    <!-- 位对齐 -->
+    <section class="tcard">
+      <h3>🎯 Bit Alignment Verification <span class="tag">AccurateRip / CTDB</span></h3>
+      <div class="tbody">
+        <p>Calculate the discID from the whole-disc cue TOC, compute AccurateRip v1/v2 checksums track by track, and compare against the global database —
+           this is the only method that can prove "this rip is bit-for-bit identical to everyone else's," stronger than any spectral or dynamic metric.
+           <b style="color:var(--warn)">Single-track files have no TOC and physically cannot be verified</b> — you'll be told this explicitly.</p>
+        <div class="pathline">
+          <input id="alPath" placeholder="Paste an album folder containing .cue…" spellcheck="false">
+          <button class="btn sm" id="alFind">Find cue</button>
+          <button class="btn sm primary" id="alRun">Batch Verify</button>
+        </div>
+        <div class="altrow">
+          <label class="chk"><input type="checkbox" id="alOffline">Offline (local only, no network)</label>
+          <span class="dim" id="alCuestatus"></span>
+        </div>
+        <div id="alOut"></div>
+      </div>
+    </section>
+
+    <!-- 响度归一 -->
+    <section class="tcard">
+      <h3>🔊 Library-Wide Loudness Normalization <span class="tag">ReplayGain · rsgain</span></h3>
+      <div class="tbody">
+        <p>Measure each track's loudness (LUFS) and suggested gain to eliminate the "louder sounds better" comparison bias.
+           By default this is a <b>read-only scan</b> (performed on temporary copies, with zero changes to the original folder); ReplayGain tags are written only after you confirm,
+           changing tags only and never the audio stream — JRiver / foobar / phone players all apply them automatically.</p>
+        <div class="pathline">
+          <input id="gnPath" placeholder="Paste a music library folder…" spellcheck="false">
+          <select id="gnLufs" title="Target loudness">
+            <option value="-18">-18 LUFS (ReplayGain standard)</option>
+            <option value="-23">-23 LUFS (EBU R128 broadcast)</option>
+          </select>
+          <button class="btn sm primary" id="gnRun">Scan Suggestions</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="gnNoAlbum">No album structure (single-track folder)</label>
+        <div id="gnOut"></div>
+      </div>
+    </section>
+  </div>
+</div><!-- /viewTools -->
+
+<div class="modal" id="modal">
+  <div class="mbox">
+    <div class="mhead"><b>Choose Music Folder</b>
+      <button class="btn sm ghost" id="mClose" style="margin-left:auto">×</button></div>
+    <div class="mpath" id="mPath">—</div>
+    <div class="mlist" id="mList"></div>
+    <div class="mfoot">
+      <button class="btn sm" id="mUp">Up One Level</button>
+      <span class="dim" id="mCount"></span>
+      <button class="btn primary sm" id="mPick" style="margin-left:auto">Use This Folder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = {jobId:null, data:null, filter:"all", q:"", scene:"cross", songNames:[]};
+
+/* ---------------- First-level scenario picker ---------------- */
+const SCENE_HINT = {
+  cross: {
+    label:"Song titles to find (separate with ;, blank = whole disc):",
+    ph:"e.g. Song One; Song Two",
+    status:"Scenario 1 · Select the <b>parent folder</b> of those albums, fill in the song titles (or leave blank for the whole disc), then click One-click smart analysis",
+  },
+  album: {
+    label:"(Optional) only pick a few tracks, blank = compare the whole disc:",
+    ph:"Blank compares the whole disc; or enter: Song One; Song Two",
+    status:"Scenario 2 · Put <b>all copies of this album in one folder</b>, select it, then click One-click smart analysis to pick the best track by track",
+  },
+  free: {
+    label:"", ph:"",
+    status:"Free analysis · drag in a folder or paste a path (separate multiple with ;), then click One-click smart analysis",
+  },
+};
+function setScene(name){
+  state.scene = name;
+  document.querySelectorAll(".scene").forEach(c=>c.classList.toggle("on", c.dataset.scene===name));
+  const cfg = SCENE_HINT[name];
+  const wrap = $("#sceneWrap");
+  if(name==="free"){
+    wrap.classList.remove("on");
+  }else{
+    wrap.classList.add("on");
+    $("#songLabel").textContent = cfg.label;
+    $("#songInput").placeholder = cfg.ph;
+    $("#songInput").value = "";
+    state.songNames = [];
+    state.q = "";
+  }
+  $("#statusText").innerHTML = `<span>${cfg.status}</span>`;
+}
+document.querySelectorAll(".scene").forEach(c=>c.onclick = ()=> setScene(c.dataset.scene));
+$("#songInput").oninput = e => {
+  state.songNames = e.target.value.split(";").map(s=>s.trim()).filter(Boolean);
+  state.q = state.songNames.join(";");
+  if(state.data) render();
+};
+
+/* ---------------- 工具 ---------------- */
+const fmtSize = b => b>1e9 ? (b/1e9).toFixed(2)+" GB" : (b/1e6).toFixed(1)+" MB";
+const fmtDur = s => {
+  if(!s) return "—";
+  const m=Math.floor(s/60), ss=Math.floor(s%60);
+  return m+":"+String(ss).padStart(2,"0");
+};
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function scoreClass(s){ return s>=80?"ok" : s>=60?"warn" : "bad"; }
+function cutClass(v){
+  const r = v.cutoff_ratio||0;
+  if((v.flags||[]).some(f=>["FAKE_LOSSLESS","TRANSCODE","UPSAMPLED"].includes(f.code))) return "bad";
+  if(r>=0.95) return "ok";
+  if(r>=0.88) return "warn";
+  return "bad";
+}
+function drClass(d){ return d==null?"" : d>=12?"ok" : d>=9?"warn" : "bad"; }
+
+/* ---------------- 顶栏探活 ---------------- */
+async function health(){
+  try{
+    const h = await (await fetch("/api/health")).json();
+    const t = h.tools||{};
+    const items = [
+      ["ffmpeg", t.ffmpeg?.ok],
+      ["ffprobe", t.ffprobe?.ok],
+      ["Spek", t.spek?.ok],
+      ["CUETools", t.cuetools?.ok],
+      ["rsgain", t.rsgain?.ok],
+    ];
+    $("#pills").innerHTML = items.map(([n,ok])=>
+      `<span class="pill ${ok?'on':'off'}" title="${esc(t[n.toLowerCase()]?.path||'')}">
+        <i></i>${n}</span>`).join("");
+  }catch(e){}
+}
+
+/* ---------------- 选择文件夹 ---------------- */
+$("#pick").onclick = async () => {
+  $("#pick").textContent = "Selecting…";
+  try{
+    const r = await (await fetch("/api/pick-folder",{method:"POST"})).json();
+    if(r.path){
+      const cur = $("#rootInput").value.trim();
+      $("#rootInput").value = cur ? cur+";"+r.path : r.path;
+    }
+  }catch(e){ alert("Failed to open the picker: "+e); }
+  $("#pick").textContent = "Choose Folder";
+};
+$("#clearRoot").onclick = () => { $("#rootInput").value = ""; };
+
+/* ---------------- 傻瓜智能：新手引导 / 拖入文件夹 ---------------- */
+$("#wizardPick").onclick = ()=> $("#pick").click();
+$("#wizardClose").onclick = ()=>{
+  $("#wizard").style.display = "none";
+  try{ localStorage.setItem("dupe_wizard_seen","1"); }catch(e){}
+};
+try{ if(localStorage.getItem("dupe_wizard_seen")==="1") $("#wizard").style.display="none"; }catch(e){}
+
+async function handleDrop(e){
+  const dt = e.dataTransfer;
+  let name = "";
+  for(const it of Array.from(dt.items||[])){
+    if(it.kind!=="file") continue;
+    const ent = it.webkitGetAsEntry && it.webkitGetAsEntry();
+    if(ent && ent.isDirectory){ name = ent.name; break; }
+    const f = it.getAsFile && it.getAsFile();
+    if(f){
+      const rp = f.webkitRelativePath || "";
+      name = (rp ? rp.split("/")[0] : f.name) || f.name;
+      break;
+    }
+  }
+  if(!$("#viewScan").classList.contains("on")) switchTab("scan");
+  if(!name){
+    $("#statusText").innerHTML = '<span>The browser didn\'t tell us which folder — please select it in the window that pops up.</span>';
+    $("#pick").click();
+    return;
+  }
+  $("#statusText").innerHTML = `<span>Got "${esc(name)}", locating the local path…</span>`;
+  let r = {paths:[]};
+  try{ r = await getJSON("/api/resolve-folder?name="+encodeURIComponent(name)); }
+  catch(err){ /* 定位失败交给原生对话框兜底 */ }
+  const paths = r.paths||[];
+  const startScan = p=>{
+    $("#rootInput").value = p;
+    $("#statusText").innerHTML = `<span>Located <b>${esc(p)}</b>, starting analysis…</span>`;
+    $("#scan").click();
+  };
+  if(paths.length===1){ startScan(paths[0]); return; }
+  if(paths.length>1){
+    const list = paths.map((p,i)=>`${i+1}. ${p}`).join("\n");
+    const c = window.prompt(
+      `Found ${paths.length} folders named "${name}". Enter a number (1-${paths.length}):\n\n${list}\n\nEnter = first one; Cancel = choose manually`, "1");
+    if(c===null){ $("#pick").click(); return; }
+    const i = Math.max(1, Math.min(paths.length, parseInt(c,10)||1))-1;
+    startScan(paths[i]);
+    return;
+  }
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">Couldn't locate "${esc(name)}" — please select it in the window that pops up.</span>`;
+  $("#pick").click();
+}
+
+(function(){
+  const mask = $("#dropmask");
+  let depth = 0;
+  const hasFiles = e => Array.from((e.dataTransfer||{}).types||[]).includes("Files");
+  window.addEventListener("dragenter", e=>{
+    if(!hasFiles(e)) return;
+    e.preventDefault(); depth++; mask.classList.add("on");
+  });
+  window.addEventListener("dragover", e=>{
+    if(!hasFiles(e)) return;
+    e.preventDefault();
+    if(e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    mask.classList.add("on");
+  });
+  window.addEventListener("dragleave", e=>{
+    if(!hasFiles(e)) return;
+    depth = Math.max(0, depth-1);
+    if(depth===0 || !e.relatedTarget) mask.classList.remove("on");
+  });
+  window.addEventListener("drop", e=>{
+    if(!hasFiles(e)) return;
+    e.preventDefault(); depth = 0; mask.classList.remove("on");
+    handleDrop(e);
+  });
+})();
+
+/* ---------------- 内置目录浏览器 ---------------- */
+const modal = $("#modal");
+let mbPath = "", mbParent = "";
+
+async function mbGo(path){
+  const url = path ? "/api/browse?path="+encodeURIComponent(path) : "/api/browse";
+  let r;
+  try{ r = await (await fetch(url)).json(); }
+  catch(e){ alert("Failed to read directory: "+e); return; }
+  if(r.error){ alert(r.error); return; }
+  mbPath = r.path; mbParent = r.parent || r.path;
+  $("#mPath").textContent = r.path;
+  $("#mCount").textContent = `${r.audio_count} audio files in this folder (including subfolders)`;
+  const rows = (r.dirs||[]).map(d=>`<div class="mrow" data-p="${esc(d.path)}">
+      <span class="ico">▸</span><span>${esc(d.name)}</span></div>`).join("");
+  $("#mList").innerHTML = rows ||
+    `<div class="mrow" style="cursor:default;color:var(--dim2)">(No subfolders — you can use this folder directly)</div>`;
+  $("#mList").querySelectorAll(".mrow[data-p]").forEach(el=>{
+    el.onclick = ()=> mbGo(el.dataset.p);
+  });
+}
+$("#browse").onclick = ()=>{ modal.classList.add("on"); mbGo(mbPath); };
+$("#mClose").onclick = ()=> modal.classList.remove("on");
+modal.onclick = e => { if(e.target===modal) modal.classList.remove("on"); };
+$("#mUp").onclick = ()=> mbGo(mbParent);
+$("#mPick").onclick = ()=>{
+  const cur = $("#rootInput").value.trim();
+  $("#rootInput").value = cur ? cur+";"+mbPath : mbPath;
+  modal.classList.remove("on");
+};
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") modal.classList.remove("on"); });
+
+/* ---------------- 扫描 ---------------- */
+$("#scan").onclick = async () => {
+  const raw = $("#rootInput").value.split(";").map(s=>s.trim()).filter(Boolean);
+  if(!raw.length){ alert("Choose a folder first"); return; }
+  state.data = null;
+  state.cancelled = false;
+  $("#scan").disabled = true;
+  $("#cancelScan").classList.add("on");
+  $("#bar").classList.add("on");
+  $("#list").innerHTML = `<div class="empty"><h3>Analyzing…</h3>
+    <div class="hint">The first full-library run is slower; afterwards results are cached and only new/changed files are processed</div></div>`;
+  try{
+    const r = await (await fetch("/api/scan",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({roots:raw, only_multi:true, use_cache:true})})).json();
+    if(r.error){ throw new Error(r.error); }
+    state.jobId = r.job_id;
+    poll();
+  }catch(e){
+    $("#statusText").innerHTML = `<span style="color:var(--bad)">Failed to start: ${esc(e.message)}</span>`;
+    $("#scan").disabled = false; $("#cancelScan").classList.remove("on");
+  }
+};
+
+// Cooperative cancel: set the backend flag, stop polling immediately, and say so.
+// Partial work produces no report (the pipeline returns "cancelled" at its checkpoints).
+$("#cancelScan").onclick = async ()=>{
+  if(!state.jobId || state.cancelled) return;
+  state.cancelled = true;
+  $("#cancelScan").classList.remove("on");
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">Stopping…</span>`;
+  try{ await fetch("/api/cancel/"+state.jobId); }catch(e){}
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">Scan cancelled. Partial work produced no report — run again if you need results.</span>`;
+  $("#scan").disabled=false; $("#bar").classList.remove("on");
+  state.jobId = null;
+};
+
+async function poll(){
+  if(!state.jobId || state.cancelled) return;
+  let j;
+  try{ j = await (await fetch("/api/job/"+state.jobId)).json(); }
+  catch(e){ setTimeout(poll,1200); return; }
+
+  const p = j.progress||{};
+  const pct = p.total ? Math.min(100, p.done/p.total*100) : (j.state==="done"?100:6);
+  $("#bar").querySelector("i").style.width = pct+"%";
+  $("#statusText").innerHTML = `<span><b>${esc(p.phase||"…")}</b></span>
+    <span class="mono">${p.done||0}/${p.total||0}</span>
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.current||"")}</span>`;
+
+  if(j.state==="error" || (j.error && String(j.error).includes("cancel"))){
+    $("#statusText").innerHTML = `<span style="color:var(--warn)">${j.error&&String(j.error).includes("cancel")?"Scan cancelled, no report generated.":"Error: "+esc(j.error||"")}</span>`;
+    $("#scan").disabled=false; $("#bar").classList.remove("on");
+    $("#cancelScan").classList.remove("on"); state.jobId=null; return;
+  }
+  if(j.state==="done"){
+    $("#bar").querySelector("i").style.width="100%";
+    setTimeout(()=>$("#bar").classList.remove("on"), 600);
+    $("#scan").disabled=false; $("#cancelScan").classList.remove("on");
+    const data = await (await fetch("/api/result/"+state.jobId)).json();
+    state.data = data; render();
+    const st = data.stats||{};
+    $("#statusText").innerHTML = `<span>✅ Done: <b>${st.songs_multi||0}</b> multi-version tracks,
+      deeply analyzed <b>${st.files_analyzed||0}</b> files in <b>${(st.elapsed_sec||0).toFixed(1)}s</b>,
+      results cached (rescanning the same folder only processes new files)</span>`;
+    return;
+  }
+  setTimeout(poll, 600);
+}
+
+/* ---------------- 渲染 ---------------- */
+function render(){
+  const d = state.data;
+  if(!d){ return; }
+  const st = d.stats||{};
+  const groups = (d.groups||[]).filter(g=>g.versions.length>1);
+
+  // Multiple song titles separated by ; keep a group if any matches (scenario 1 / 2)
+  const names = String(state.q||"").split(";").map(s=>s.trim().toLowerCase()).filter(Boolean);
+  let shown = groups.filter(g=>{
+    if(state.filter==="bad" && !g.versions.some(v=>(v.flags||[]).some(f=>f.level==="bad"))) return false;
+    if(names.length){
+      const s=(g.title+" "+g.versions.map(v=>v.album+v.name).join("")).toLowerCase();
+      if(!names.some(n=>s.includes(n))) return false;
+    }
+    return true;
+  });
+
+  const kpi = `<div class="kpis">
+    <div class="kpi"><b>${st.files_probed||0}</b><span>Files scanned</span></div>
+    <div class="kpi"><b>${st.songs_total||0}</b><span>Tracks identified</span></div>
+    <div class="kpi"><b>${st.songs_multi||0}</b><span>Multi-version tracks</span></div>
+    <div class="kpi"><b>${st.songs_with_problems||0}</b><span>Tracks with problems</span></div>
+    <div class="kpi"><b>${(st.elapsed_sec||0).toFixed(0)}s</b><span>Elapsed</span></div>
+  </div>
+  <div class="controls" style="background:none;border:none;padding:0 0 12px">
+    <input id="q" placeholder="Search title / album" value="${esc(state.q)}" style="width:220px">
+    <button class="btn sm ${state.filter==='all'?'primary':'ghost'}" data-f="all">All</button>
+    <button class="btn sm ${state.filter==='bad'?'primary':'ghost'}" data-f="bad">Problems only</button>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm" id="expHtml">Export HTML</button>
+      <button class="btn sm" id="expCsv">Export CSV</button>
+    </div>
+  </div>`;
+
+  const rows = shown.map((g,i)=>groupHTML(g,i)).join("");
+  $("#list").innerHTML = kpi + (rows || `<div class="empty"><h3>No matching multi-version tracks</h3>
+    <div class="hint">Make sure the folder has multiple albums of the same song, or try changing the filter</div></div>`);
+
+  const q = $("#q");
+  q.oninput = e => { state.q = e.target.value; render();
+    const n=$("#q"); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length);} };
+  document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ state.filter=b.dataset.f; render(); });
+  $("#expHtml").onclick = ()=>window.open(`/api/export/${state.jobId}?fmt=html`);
+  $("#expCsv").onclick  = ()=>window.open(`/api/export/${state.jobId}?fmt=csv`);
+
+  document.querySelectorAll(".ghead").forEach(h=>{
+    h.onclick = () => h.parentElement.classList.toggle("open");
+  });
+  if(state.autoOpen != null){
+    const gs = document.querySelectorAll(".group");
+    const gi = gs[parseInt(state.autoOpen,10) || 0];
+    if(gi){ gi.classList.add("open"); state.autoOpen = null; }
+  }
+  document.querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick = async (e)=>{
+      e.stopPropagation();
+      const {act,path} = b.dataset;
+      if(act==="copy"){ navigator.clipboard.writeText(path); b.textContent="Copied"; return; }
+      try{
+        const r = await (await fetch("/api/action",{method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:act, path})})).json();
+        if(r.error) alert(r.error);
+      }catch(err){ alert(err); }
+    };
+  });
+}
+
+/* 白话结论卡：把参数翻成「留哪版、为什么、淘汰谁」 */
+function verdictHTML(g){
+  const vs = g.versions||[];
+  if(!vs.length) return "";
+  const best = vs[0];
+  const bn = best.album || best.folder || "this version";
+  const reasons = [];
+  if(best.cutoff_khz && best.cutoff_khz >= 20) reasons.push(`spectrum intact up to ${best.cutoff_khz} kHz`);
+  else if(best.cutoff_khz) reasons.push(`spectrum up to ${best.cutoff_khz} kHz (most complete in this batch)`);
+  if(best.dr_value != null) reasons.push(`DR dynamics ${best.dr_value}`);
+  if(best.effective_bits) reasons.push(`${best.effective_bits} effective bits`);
+  const bestBad = (best.flags||[]).filter(f=>f.level==="bad");
+  if(bestBad.length) reasons.push("but it has issues too: "+bestBad[0].text);
+  const reason = reasons.length ? reasons.join(", ") : `highest overall score at ${best.score}`;
+
+  let worstLine = "";
+  const worst = vs[vs.length-1];
+  if(vs.length>1 && worst && worst!==best){
+    const wf = (worst.flags||[]).filter(f=>f.level==="bad");
+    if(wf.length)
+      worstLine = `Version #${worst.rank} (${esc(worst.album||worst.name)}) should be discarded: ${esc(wf[0].text)}.`;
+    else if((worst.score??0)+8 < (best.score??0))
+      worstLine = `Version #${worst.rank} (${esc(worst.album||worst.name)}) is clearly a notch weaker (overall ${worst.score}) — no need to keep it.`;
+  }
+  const badTotal = vs.reduce((n,v)=>n+(v.flags||[]).filter(f=>f.level==="bad").length,0);
+  const cls = (bestBad.length || badTotal>2) ? "bad" : "";
+  // Honest boundary: 19-20.9 kHz is the hardest band to judge (320k MP3 / AAC 256 / natural
+  // roll-off all look alike here). Spectrum can only disprove, never prove — soften to "verify".
+  const cz = best.cutoff_khz;
+  const boundary = (cz!=null && cz>=19 && cz<=20.9);
+  const caveat = boundary
+    ? `<div class="verdict-caveat">This sits in the 19-21 kHz grey zone: high-bitrate lossy, AAC 256 and natural roll-off can all look like this.
+       Spectrum alone cannot settle it. Use this version's "Check in Spek" button to inspect the shape, or an ABX blind test — do not delete songs on this score alone.</div>` : "";
+  return `<div class="verdict ${cls}">
+    <div class="vh">Bottom line · No parameters needed</div>
+    <div class="vt">Keep <b>version #${best.rank}</b> (${esc(bn)}): ${esc(reason)}. ${worstLine}
+      ${vs.length>1?`<span class="smart-hint">Expand for detailed version-by-version comparison ↓</span>`:""}</div>
+      ${caveat}
+  </div>`;
+}
+
+function groupHTML(g, idx){
+  const best = g.versions[0];
+  const bad = g.versions.some(v=>(v.flags||[]).some(f=>f.level==="bad"));
+  const head = `<div class="ghead">
+    <span class="caret">▶</span>
+    <div>
+      <div class="gtitle">${esc(g.title)}</div>
+      <div class="gsub">${esc(best.artist||"")} · ${g.versions.length} versions · recommended from ${esc(best.album||best.folder||"")}</div>
+    </div>
+    <span class="vcount">${g.versions.length} versions</span>
+    <div class="metric">${best.cutoff_khz}<span>Cutoff kHz</span></div>
+    <div class="metric">${best.dr_value??"—"}<span>DR dynamics</span></div>
+    <div class="score ${scoreClass(best.score)}">${best.score}</div>
+    <span class="${bad?'dot-bad':'dot-ok'}"></span>
+  </div>`;
+
+  const adv = `<div class="advice ${bad?'':'ok'}">${esc(g.advice||"")}</div>`;
+  const vers = g.versions.map(v=>verHTML(v)).join("");
+  return `<div class="group" ${idx===0?"":""} id="g${idx}">${head}
+    <div class="gbody">${verdictHTML(g)}${adv}<div class="vers">${vers}</div></div></div>`;
+}
+
+function specAxisHTML(v, env){
+  if(!env.length) return "";
+  const nyq = v.nyquist_khz || (v.sample_rate/2000) || 24;
+  const marks = [[10,"10k"],[16,"16k"],[20,"20k"]].filter(([k])=>k<nyq);
+  // Bands are log-spaced and ticks are positioned by index, so they are approximate.
+  const ticks = marks.map(([k,label])=>{
+    let idx = env.findIndex(e=>e.f>=k*1000);
+    if(idx<0) return "";
+    const left = idx/Math.max(1,env.length-1)*100;
+    return `<span class="tick" style="left:${left.toFixed(1)}%">${label}</span>`;
+  }).join("");
+  let cutline = "";
+  const cutLabel = v.cutoff_khz
+    ? `<div class="spec-cut-label">Spectrum cuts off at about ${v.cutoff_khz} kHz${v.cutoff_khz<nyq-2?" (grey area)":""}</div>` : "";
+  if(v.cutoff_khz){
+    let ci = env.findIndex(e=>e.f>=v.cutoff_khz*1000);
+    if(ci>=0) cutline = `<span class="cutline" style="left:${(ci/Math.max(1,env.length-1)*100).toFixed(1)}%"></span>`;
+  }
+  return `<div class="spec-axis">${ticks}<span class="tick end">${Math.round(nyq)}k</span>${cutline}</div>${cutLabel}`;
+}
+
+function verHTML(v){
+  const env = v.octave_envelope||[];
+  const maxdb = Math.max(...env.map(e=>e.db??-90), -20);
+  const bars = env.map(e=>{
+    const h = Math.max(2, Math.min(34, 34 - (maxdb-(e.db??maxdb-40))));
+    const cut = e.f > (v.cutoff_khz*1000*1.02);
+    return `<i class="${cut?'cut':''}" style="height:${h}px" title="${e.f}Hz ${e.db}dB"></i>`;
+  }).join("");
+
+  const flags = (v.flags||[]).map(f=>`<div class="flag ${f.level}">${esc(f.text)}</div>`).join("");
+  const notes = (v.notes||[]).slice(0,3).map(n=>`<div class="flag info">${esc(n)}</div>`).join("");
+  const bitBadge = (v.bit_depth>=24 && (v.flags||[]).some(f=>f.code==="UPSAMPLED"))
+    ? `<span class="badge bad">Fake Hi-Res</span>`
+    : (v.flags||[]).some(f=>f.code==="FAKE_LOSSLESS") ? `<span class="badge bad">Fake lossless</span>`
+    : (v.flags||[]).some(f=>f.code==="UPSAMPLED") ? `<span class="badge bad">Upsampled</span>`
+    : `<span class="badge">${esc(v.codec||"")}</span>`;
+
+  return `<div class="ver ${v.is_best?'best':''}">
+    <div class="vtop">
+      <span class="rk">#${v.rank}</span>${v.is_best?'<span class="badge">Recommended</span>':''}
+      ${bitBadge}
+      <span class="vscore ${scoreClass(v.score)}">${v.score}</span>
+    </div>
+    <div class="vname">${esc(v.name)}</div>
+    <div class="valbum">${esc(v.album||"")} ${v.date?"· "+esc(v.date):""} · ${fmtDur(v.duration)} · ${fmtSize(v.size_bytes)}</div>
+    <div class="spec">${bars}</div>
+    ${specAxisHTML(v, env)}
+    <div class="grid2">
+      <div class="cell" title="How high in frequency the audio content actually extends. True lossless extends all the way to the Nyquist frequency; a low-pass cutoff means it was transcoded from a lower bitrate — file size can't lie.">
+        <div class="k">Spectral cutoff</div>
+        <div class="v ${cutClass(v)}">${v.cutoff_khz}<i> / ${v.nyquist_khz} kHz</i></div></div>
+      <div class="cell" title="How many dB louder the loudest section is than the quietest — higher means more dynamics. Below 9 usually means it was compressed; but if the original recording was itself a compressed master, low DR is its true form.">
+        <div class="k">Dynamic DR</div>
+        <div class="v ${drClass(v.dr_value)}">${v.dr_value??"—"}<i> / DR16</i></div></div>
+      <div class="cell" title="The number of bits that actually carry information. Well below the file's stated bit depth means lower-bit data was zero-padded to impersonate high resolution.">
+        <div class="k">Effective bit depth</div>
+        <div class="v">${v.effective_bits??"—"}<i> of ${v.bit_depth} bit</i></div></div>
+      <div class="cell" title="How many samples per second. A high sample rate doesn't mean better sound — upsampling can inflate a file to 96 kHz without adding any information; the spectrum is what matters.">
+        <div class="k">Sample rate</div>
+        <div class="v">${(v.sample_rate/1000).toFixed(1)}<i> kHz</i></div></div>
+      <div class="cell" title="Overall loudness and loudness range. The louder version often sounds 'clearer', but it's just a hotter master — this is the 'louder sounds better' trap.">
+        <div class="k">LUFS / LRA</div>
+        <div class="v">${v.lufs_i??"—"}<i> / ${v.lra??"—"} LU</i></div></div>
+      <div class="cell" title="The true peak including overshoots between samples. A master above 0 dBTP will clip and distort at the DAC.">
+        <div class="k">True peak</div>
+        <div class="v ${(v.true_peak_db>0.2)?'bad':''}">${v.true_peak_db??"—"}<i> dBTP</i></div></div>
+      <div class="cell" title="How many dB the peak is above the average loudness. Below 10 usually means heavy compression and squeezed dynamics.">
+        <div class="k">PLR Peak/Loudness</div>
+        <div class="v ${(v.plr!=null && v.plr<10)?'warn':''}">${v.plr??"—"}<i> dB</i></div></div>
+      <div class="cell" title="How similar the left and right channels are sample by sample. Near 1 means fake stereo duplicated from mono; negative means inverted polarity, which cancels out when summed to mono.">
+        <div class="k">Channel correlation</div>
+        <div class="v ${(v.channel_corr>=0.9995)?'warn':(v.channel_corr<-0.2?'bad':'')}">${v.channel_corr??"—"}<i> / 1.0</i></div></div>
+      <div class="cell" title="Whether the whole waveform is offset from zero. DC offset wastes headroom and is usually introduced during transfer or ripping.">
+        <div class="k">DC offset</div>
+        <div class="v ${(v.dc_offset_db>-45)?'warn':''}">${v.dc_offset_db??"—"}<i> dBFS</i></div></div>
+    </div>
+    <div class="flags">${flags}${notes}</div>
+    <div class="vacts">
+      <button class="btn" data-act="spek" data-path="${esc(v.path)}">Check with Spek</button>
+      <button class="btn" data-act="reveal" data-path="${esc(v.path)}">Reveal file</button>
+      <button class="btn" data-act="copy" data-path="${esc(v.path)}">Copy path</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------- 说明面板 ---------------- */
+const HELP = `
+<h4>What this tool compares</h4>
+<ul>
+<li><b>Spectral ceiling</b>: true lossless content extends all the way to the Nyquist frequency; low-passed content drops off a cliff at some point, followed by the digital noise floor. This is the hardest evidence for exposing "fake lossless".</li>
+<li><b>Effective bit depth</b>: map samples back onto the fixed-point grid to see how many low bits are genuinely useful. It can expose "16-bit zero-padded to fake 24-bit"; <i>but it cannot</i> expose fake bit inflation with dither added during resampling — that case can only be caught via the spectrum.</li>
+<li><b>DR dynamics</b>: same methodology as TT DR Meter — crest factor over 3-second blocks, averaged over the loudest 20%. Every 3 dB higher DR means one less notch of compression.</li>
+<li><b>True peak / PLR</b>: sample peaks miss overshoots between samples. A master whose true peak exceeds 0 dBTP will distort at the DAC.</li>
+<li><b>Clipping count</b>: actually counts the clipped (flattened) samples — more reliable than eyeballing the waveform.</li>
+<li><b>Channel correlation</b>: per-sample correlation between left and right channels. ≈1 means both channels are identical (mono duplicated); negative means inverted polarity — summing to mono will cancel out.</li>
+<li><b>DC offset</b>: a non-zero mean across the track's samples means DC is present, wasting headroom; usually introduced during transfer/ripping.</li>
+<li><b>Decode integrity</b>: every decode error reported is counted. Bad blocks and truncation show up here first, but fine-grained damage still needs flac -t / CUETools to verify.</li>
+</ul>
+<h4>Common pitfalls</h4>
+<ul>
+<li>Low DR doesn't mean poor sound quality: some old recordings are themselves highly compressed masters — low DR is their true form.</li>
+<li>A high frequency ceiling doesn't mean better sound: upsampling can inflate a file to 96 kHz without adding any information.</li>
+<li>Spectrum can disprove, not prove: a hard cutoff is strong evidence of a problem, but no cutoff does not guarantee a true lossless file (high-bitrate MP3 V0 / AAC 256 can look clean).</li>
+<li>A notch at 16 kHz does not automatically mean fake: a 44.1 kHz master may naturally end there, and piano or acoustic music has little high-frequency content. 19-21 kHz is the grey zone — do not rule a version out on this alone.</li>
+<li>The same recording with different masters commonly differs by 2–4 dB in DR; a gap above 8 dB usually means two different mastering passes.</li>
+</ul>
+<h4>Free tools to fill the gaps (not built in, but worth installing)</h4>
+<ul>
+<li><code>CUETools / CUERipper</code>: combines AccurateRip + CTDB verification to answer "was this disc ripped correctly" — a more fundamental layer than any parameter.</li>
+<li><code>Exact Audio Copy</code>: the gold standard for ripping, with AccurateRip.</li>
+<li><code>foobar2000</code> + Dynamic Range Meter: DR cross-check, supports batch.</li>
+<li><code>loudgain / rsgain</code>: batch-compute ReplayGain 2 (EBU R128), command line, ideal for whole libraries.</li>
+<li><code>AuCDtect-Task / Tau Analyzer</code>: veteran fake-lossless detectors (MPEG residue detection), complementary to this tool's spectral method.</li>
+<li><code>MusicBee / Mp3tag</code>: batch tags, cover art, and naming cleanup.</li>
+<li><code>Audacity / ocenaudio</code>: view waveforms, check DC offset, and level-match before ABX tests.</li>
+<li><code>MediaInfo</code>: authoritative readout of container/codec details.</li>
+</ul>
+<h4>Why no direct JRiver integration</h4>
+<p>JRiver stores DR values in a private library only readable through its own MCWS interface; this tool implements the same DR algorithm locally, without depending on JRiver running. If you want values aligned one-by-one with JRiver's library, let me know and I'll add an MCWS adapter for cross-verification.</p>
+`;
+$("#helpBtn").onclick = ()=>{ $("#side").classList.add("open"); $("#sideBody").innerHTML = HELP; };
+$("#closeSide").onclick = ()=>$("#side").classList.remove("open");
+
+/* ================= 标签页 ================= */
+const VIEW_OF = {scan:"#viewScan", order:"#viewOrder", tools:"#viewTools"};
+function switchTab(tab){
+  const b = document.querySelector(`.tabs button[data-tab="${tab}"]`);
+  if(!b) return;
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on", x===b));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+  $(VIEW_OF[tab]||"#viewScan").classList.add("on");
+  if(tab==="tools") toolsInit();
+}
+document.querySelectorAll(".tabs button").forEach(b=>{
+  b.onclick = ()=>{
+    switchTab(b.dataset.tab);
+    if(b.dataset.tab==="order" && !ord.plan){ $("#oPath").focus(); }
+  };
+});
+
+/* ================= 播放顺序 ================= */
+const ord = {plan:null, manifests:[], last:null};
+const postJSON = async (u,b)=>(await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify(b)})).json();
+const getJSON = async u=>(await fetch(u)).json();
+
+$("#oPick").onclick = async ()=>{
+  const r = await postJSON("/api/pick-folder",{});
+  if(r.path){ $("#oPath").value = r.path; oScan(); } else if(r.error) alert(r.error);
+};
+$("#oClear").onclick = ()=>{ $("#oPath").value=""; };
+$("#oSort").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oPrefix").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oRecursive").onchange = ()=>{ if(ord.plan) oScan(); };
+$("#oScan").onclick = oScan;
+$("#oPath").onkeydown = e=>{ if(e.key==="Enter") oScan(); };
+
+function fsAdvice(plan){
+  const fs = (plan.fs||"").toUpperCase();
+  const fatLike = fs.includes("FAT");
+  if(!fs) return "";
+  if(fatLike) return `<div class="warnbox">Detected <b>${esc(fs)}</b>: on drives like this (USB sticks / car SD cards), the directory is an append-only chain in write order,
+    and players most likely play <b>by directory entry order</b>. Renaming alone may not work — it's recommended to check "Copy ordered duplicate",
+    then copy the whole <code>_ordered-copy</code> folder to the USB stick (the copy order becomes the playback order).</div>`;
+  return `<div class="warnbox ok">Filesystem <b>${esc(fs)}</b>: the directory is indexed by name,
+    so "rename + playlist" is usually enough to fix the order; only consider "Copy ordered duplicate" if the car head unit still plays out of order.</div>`;
+}
+
+async function oScan(){
+  const p = $("#oPath").value.trim();
+  if(!p){ $("#oStatus").innerHTML = '<span style="color:var(--bad)">Enter a folder path first</span>'; return; }
+  $("#oStatus").innerHTML = "<span>Scanning…</span>";
+  const plan = await postJSON("/api/order/plan", {
+    path:p, sort_by:$("#oSort").value, prefix:$("#oPrefix").value,
+    recursive:$("#oRecursive").checked
+  });
+  if(plan.error){
+    $("#oStatus").innerHTML = `<span style="color:var(--bad)">${esc(plan.error)}</span>`;
+    $("#oTable").innerHTML = "";
+    return;
+  }
+  ord.plan = plan;
+  const ms = await getJSON("/api/order/manifests?path="+encodeURIComponent(p));
+  ord.manifests = ms.items||[];
+  oRender();
+}
+
+function oRender(){
+  const p = ord.plan;
+  if(!p) return;
+  const st = p.stats||{};
+  const rows = p.files.map(f=>{
+    const dur = f.duration ? fmtDur(f.duration) : "—";
+    const coll = f.collision ? `<span class="meta2" style="color:var(--bad)">Target name already exists</span>` : "";
+    const same = !f.renamed;
+    return `<tr>
+      <td class="idx">${String(f.index).padStart(2,"0")}</td>
+      <td class="oldname">${esc(f.name)}</td>
+      <td style="color:var(--dim2);width:16px">→</td>
+      <td class="newname">${same?`<span style="color:var(--dim2)">(unchanged)</span>`:esc(f.new_name)}</td>
+      <td class="meta2">${dur}</td>
+      <td class="meta2">${fmtSize(f.size)}</td>
+      <td>${coll}</td>
+    </tr>`;
+  }).join("");
+
+  $("#oTable").innerHTML = `<table>
+    <thead><tr><th>#</th><th>Current filename</th><th></th><th>Sorted filename</th>
+      <th>Duration</th><th>Size</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+
+  const pyNote = p.pinyin ? "" :
+    `<div class="warnbox">Pinyin library not installed; Chinese text is sorted by code point (result is not Pinyin order). Just run <code>pip install pypinyin</code> and scan again.</div>`;
+  $("#oNote").innerHTML = pyNote + fsAdvice(p);
+  $("#oStatus").innerHTML = `<span><b>${st.count}</b> files ·
+    ${st.titles} titles · ${st.artists} artists · <b>${st.to_rename}</b> to rename ·
+    based on "${esc(p.sort_label)}"${ord.manifests.length?` · ${ord.manifests.length} previous operation(s) in this folder`:""}</span>`;
+  $("#oActions").style.display = "flex";
+  $("#oSummary").textContent = `Target order generated (read-only preview, no files changed)`;
+  $("#oApply").textContent = "Apply (rename + playlist)";
+  $("#oUndo").disabled = !ord.manifests.length;
+}
+
+$("#oApply").onclick = async ()=>{
+  const p = ord.plan; if(!p) return;
+  const acts = {rename:true, playlist:true, tags:$("#oTags").checked,
+                timestamps:$("#oTimes").checked, fatorder:$("#oFat").checked};
+  const n = p.stats.to_rename;
+  const extra = ["playlist"];
+  if(acts.tags) extra.push("tags");
+  if(acts.timestamps) extra.push("timestamps");
+  if(acts.fatorder) extra.push("ordered duplicate (uses extra space)");
+  const msg = `The following will be done in this folder:\n\n`
+    + `• Rename ${n} files\n• Generate ${extra.join(", ")}\n\n`
+    + `Folder: ${p.folder}\n\nAn undo manifest will be written so you can restore with one click at any time. Continue?`;
+  if(!confirm(msg)) return;
+
+  $("#oApply").disabled = true;
+  $("#oSummary").textContent = "Applying…";
+  const r = await postJSON("/api/order/apply", {
+    path:p.folder, sort_by:$("#oSort").value, prefix:$("#oPrefix").value,
+    actions:acts, confirm:true
+  });
+  $("#oApply").disabled = false;
+  if(r.error){ $("#oSummary").textContent = "Failed: "+r.error; return; }
+
+  ord.last = r;
+  const errN = (r.errors||[]).length;
+  const base = x => String(x).split(/[\\/]/).pop();
+  const okHTML = `<div class="warnbox ok">Done: renamed <b>${r.renames||0}</b> files
+    ${r.playlists?.length?`· playlists ${r.playlists.map(base).join(", ")}`:""}
+    ${r.copydir?`· ordered duplicate <code>${esc(r.copydir)}</code>`:""}
+    ${errN?`<br>${errN} file(s) failed: ${esc((r.errors[0]||{}).error||"")}`:""}
+    <br>Undo manifest: <code>${esc(r.manifest||"")}</code></div>`;
+  await oScan();
+  $("#oNote").innerHTML = okHTML;
+  $("#oActions").style.display = "flex";
+  $("#oSummary").textContent = `Applied.${r.manifest?" Click 'Undo Last Operation' on the right to restore.":""}`;
+  $("#oUndo").disabled = false;
+};
+
+$("#oUndo").onclick = async ()=>{
+  const p = ord.plan; if(!p) return;
+  const ms = ord.manifests;
+  const target = (ord.last && ord.last.manifest) || (ms[0] && ms[0].manifest);
+  if(!target){ alert("No undo manifest for this folder"); return; }
+  if(!confirm(`Restore from the undo manifest?\n\n${target}\n\nThis will revert renames, restore timestamps, and delete playlists generated by this tool.`)) return;
+  const r = await postJSON("/api/order/undo",{manifest:target});
+  if(r.error){ alert(r.error); return; }
+  alert(`Restored ${r.restored} file names.\n${r.note||""}`);
+  ord.last = null;
+  await oScan();
+};
+
+/* ================= 位对齐 / 响度 ================= */
+let toolsReady = false;
+async function toolsInit(){
+  if(toolsReady) return;
+  toolsReady = true;
+  try{
+    const st = await getJSON("/api/align/status");
+    $("#alCuestatus").innerHTML = st.cuetools
+      ? `CUETools installed ✓ (GUI cross-check available)`
+      : `CUETools not installed <a class="lnk" href="${st.download}" target="_blank">Download free ↗</a> (for cross-check only; automatic verification is built in)`;
+    const g = await getJSON("/api/gain/status");
+    if(!g.ok){
+      $("#gnOut").innerHTML = `<div class="warnbox">rsgain not found. Official portable build (free, GPL):
+        <a class="lnk" href="https://github.com/complexlogic/rsgain/releases" target="_blank">Download ↗</a>,
+        extract to <code>tools/rsgain/</code> in the program folder, then refresh the page.</div>`;
+    }
+  }catch(e){}
+}
+
+const AL_LABEL = {ok:"Bit-perfect", mismatch:"Mismatch", not_found:"Not in database",
+                  need_cue:"Whole-disc cue needed", offline:"Offline / lookup failed", error:"Error"};
+function alBadge(s){
+  const cls = s==="ok" ? "" : (s==="mismatch"||s==="error" ? "bad" : "warn");
+  return `<span class="badge ${cls}">${AL_LABEL[s]||s}</span>`;
+}
+$("#alFind").onclick = async ()=>{
+  const p = $("#alPath").value.trim();
+  if(!p){ alert("Enter a folder first"); return; }
+  const r = await getJSON("/api/align/find?path="+encodeURIComponent(p));
+  if(r.error){ $("#alOut").innerHTML = `<div class="warnbox">${esc(r.error)}</div>`; return; }
+  $("#alOut").innerHTML = r.count
+    ? `<div class="warnbox ok">Found <b>${r.count}</b> cue file(s):
+         ${r.cues.slice(0,8).map(c=>`<div class="mono" style="font-size:11px">${esc(c)}</div>`).join("")}
+         ${r.count>8?`<div class="dim">…and ${r.count-8} more</div>`:""}</div>`
+    : `<div class="warnbox">${esc(r.hint)}</div>`;
+};
+$("#alRun").onclick = async ()=>{
+  const p = $("#alPath").value.trim();
+  if(!p){ alert("Enter a folder first"); return; }
+  const offline = $("#alOffline").checked;
+  $("#alOut").innerHTML = `<div class="statusline">Verifying… (the first run decodes the whole disc; please wait)</div>`;
+  try{
+    const r = await postJSON("/api/align/batch",{path:p, fetch:!offline});
+    if(!r.count){ $("#alOut").innerHTML = `<div class="warnbox">No .cue file in this folder. Bit alignment requires a whole-disc cue + original rip; single-track files physically cannot be verified.</div>`; return; }
+    let ok=0, bad=0;
+    const rows = (r.results||[]).map(x=>{
+      if(x.status==="ok") ok++; else if(x.status==="mismatch"||x.status==="error") bad++;
+      const name = String(x.cue||"").split(/[\\/]/).pop();
+      const conf = x.best_confidence!=null ? ` · confidence ${x.best_confidence}` : "";
+      const cuectl = ffmpegReady && stCuetools
+        ? ` <a class="lnk" href="javascript:;" onclick="cueReview('${esc(x.cue)}')">CUETools review</a>` : "";
+      return `<tr><td>${esc(name)}</td><td>${alBadge(x.status)}</td>
+        <td style="font-family:inherit">${esc(x.reason||"")}${conf}${cuectl}</td></tr>`;
+    }).join("");
+    $("#alOut").innerHTML = `<div class="stat"><span>Verified <b>${r.count}</b> disc(s)</span>
+        <span style="color:var(--ok)">Match <b>${ok}</b></span>
+        <span style="color:var(--bad)">Problems <b>${bad}</b></span></div>
+      <table class="minitbl"><thead><tr><th>cue</th><th>Result</th><th>Details</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }catch(e){ $("#alOut").innerHTML = `<div class="warnbox">Verification failed: ${esc(e.message||e)}</div>`; }
+};
+let ffmpegReady=false, stCuetools=false;
+getJSON("/api/align/status").then(s=>{ stCuetools=!!s.cuetools; ffmpegReady=true; }).catch(()=>{});
+window.cueReview = function(cue){
+  postJSON("/api/action",{action:"cuetools", path:cue}).then(r=>{
+    if(r.error) alert(r.error); else alert(r.note||"CUETools launched");
+  });
+};
+$("#gnRun").onclick = async ()=>{
+  const p = $("#gnPath").value.trim();
+  if(!p){ alert("Enter a folder first"); return; }
+  const lufs = parseInt($("#gnLufs").value), noAlbum = $("#gnNoAlbum").checked;
+  $("#gnOut").innerHTML = `<div class="statusline">Scanning… (performed on temporary copies, zero changes to the original folder)</div>`;
+  try{
+    const r = await postJSON("/api/gain/plan",{path:p, lufs, no_album:noAlbum});
+    if(r.error){ $("#gnOut").innerHTML = `<div class="warnbox">${esc(r.error)}${r.hint?" "+esc(r.hint):""}</div>`; return; }
+    const sm = r.summary||{};
+    const rows = (r.items||[]).map(it=>`<tr><td>${esc(it.name)}</td>
+      <td>${it.lufs??"—"}</td><td style="color:${(it.gain_db||0)>0?'var(--warn)':'var(--ok)'}">${it.gain_db>0?'+':''}${it.gain_db??"—"}</td>
+      <td>${it.peak_db??"—"}</td></tr>`).join("");
+    $("#gnOut").innerHTML = `<div class="stat">
+        <span>Scanned <b>${r.scanned}</b> tracks</span>
+        <span>Avg loudness <b>${sm.Average_Loudness||"—"}</b></span>
+        <span>Avg gain <b>${sm.Average_Gain||"—"}</b></span></div>
+      <table class="minitbl"><thead><tr><th>File</th><th>LUFS</th><th>Suggested gain dB</th><th>Peak dB</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${(r.items||[]).length?`<div class="altrow">
+        <button class="btn sm" id="gnApply">Confirm Write ReplayGain Tags</button>
+        <span class="dim">Tags only, audio stream untouched; can be undone by rewriting at any time</span></div>`:""}
+      <div class="dim" style="font-size:11px;margin-top:6px">${esc(r.note||"")}</div>`;
+    const btn = $("#gnApply");
+    if(btn) btn.onclick = async ()=>{
+      if(!confirm(`Confirm writing ReplayGain tags?\n\nFolder: ${p}\nTarget: ${lufs} LUFS\n\nTags only, audio stream unchanged; can be undone by rewriting with rsgain at any time.`)) return;
+      btn.disabled = true; btn.textContent = "Writing…";
+      const a = await postJSON("/api/gain/apply",{path:p, lufs, no_album:noAlbum, confirm:true});
+      btn.disabled = false; btn.textContent = "Confirm Write ReplayGain Tags";
+      if(a.error){ alert(a.error); return; }
+      alert(`Wrote ReplayGain tags to ${a.tagged} file(s).\n${a.note||""}`);
+    };
+  }catch(e){ $("#gnOut").innerHTML = `<div class="warnbox">Scan failed: ${esc(e.message||e)}</div>`; }
+};
+
+$("#oHelp").onclick = ()=>{
+  $("#side").classList.add("open");
+  $("#sideBody").innerHTML = ORDER_HELP;
+};
+const ORDER_HELP = `
+<h4>Why playback order gets messed up</h4>
+<ul>
+<li><b>Directory entry order</b>: a FAT32/exFAT directory is an "append chain" — files are placed wherever they were copied in. Car head units and many portable players play directly in this order — this is what you see as "by save time".</li>
+<li><b>WAV has no tags</b>: WAV has poor ID3 compatibility, so most players can't read track numbers and fall back to filenames.</li>
+<li><b>Chinese compared by bytes</b>: when sorting filenames, Chinese text is compared by UTF-8 bytes, yielding code-point order — neither Pinyin nor stroke order.</li>
+</ul>
+<h4>Four methods, each for a different kind of player</h4>
+<table style="width:100%;font-size:12px;border-collapse:collapse">
+<tr><th align="left">Method</th><th align="left">Fixes</th><th align="left">Cost</th></tr>
+<tr><td>Numbered filenames</td><td>Players that sort by filename (the vast majority)</td><td>Renaming</td></tr>
+<tr><td>m3u8 / m3u playlist</td><td>Playlist-capable players (car, foobar, JRiver)</td><td>Two extra files</td></tr>
+<tr><td>Write tags (INFO+ID3)</td><td>Players that sort by tags (JRiver, MusicBee)</td><td>Modifies file contents</td></tr>
+<tr><td>Timestamp sorting</td><td>Players that sort by "date"</td><td>Modifies file times</td></tr>
+<tr><td>Copy ordered duplicate</td><td>FAT/exFAT devices that read by directory entry order</td><td>Uses extra space</td></tr>
+</table>
+<h4>Safety boundaries</h4>
+<ul>
+<li>By default only a plan is produced; files are changed only after clicking "Apply" and a second confirmation.</li>
+<li>Never deletes files; only renames, writes tags, changes timestamps, and copies.</li>
+<li>Each apply writes an undo manifest to <code>.dupescope/undo-*.json</code> so you can roll back with one click.</li>
+<li>When a target name already exists, the file is skipped and reported — never overwritten.</li>
+</ul>
+<h4>Where Pinyin comes from</h4>
+<p>Uses <code>pypinyin</code> to convert each Chinese character to Pinyin (without tones), then does a natural-order comparison — so "Cai Qin (cai)" sorts before "Deng Lijun (deng)".
+When the Pinyin library isn't installed it falls back to code-point order, and the interface warns you explicitly.</p>
+<h4>Recommended workflow</h4>
+<ol>
+<li>First scan by "Title → Artist" and check whether the order is right;</li>
+<li>Check "Write tags" so JRiver/MusicBee also have track numbers to sort by;</li>
+<li>If the target device is a car USB stick (exFAT), also check "Copy ordered duplicate" and copy the duplicate to the stick;</li>
+<li>If the player is still stubborn, just hand it the .m3u8 file.</li>
+</ol>
+`;
+
+health();
+
+/* 支持 http://127.0.0.1:8765/?auto=D:\Music 直接开跑，可存成书签
+   也支持 ?tab=order&dir=D:\Music\同一首歌 直接跳到排序页 */
+(function(){
+  const q = new URLSearchParams(location.search);
+  if(q.get("tab")==="order"){
+    const b = document.querySelector('.tabs button[data-tab="order"]');
+    if(b) b.click();
+    if(q.get("dir")){ $("#oPath").value = q.get("dir"); setTimeout(oScan, 300); }
+    return;
+  }
+  if(q.get("tab")==="tools"){
+    switchTab("tools");
+    if(q.get("dir")){ $("#alPath").value = q.get("dir"); $("#gnPath").value = q.get("dir"); }
+    return;
+  }
+  if(q.get("auto")){ $("#rootInput").value = q.get("auto"); setTimeout(()=>$("#scan").click(), 350); }
+  state.autoOpen = q.get("open");
+})();
+</script>
+</body></html>

@@ -3,7 +3,7 @@ name: dupe-audio-sort-user-ac60b2be
 slug: dupe-audio-sort-user-ac60b2be
 displayName: 同曲音质对比 · 挑出最佳版本
 displayName_en: Compare Same-Track Versions, Pick the Best
-version: 1.3.0
+version: 1.4.0
 summary: 同一首歌散落在多张专辑？自动对比频谱上限、位深、动态范围与削波，告诉你该留哪一版；并修正多版本文件夹的播放顺序。纯本地、免费、不上传音频。
 description: |
   把散落在多张专辑里的同一首歌找出来，用硬指标（频谱上限、有效位深、DR 动态、真峰值、削波、声道相关、DC 偏移）排出该留哪版；

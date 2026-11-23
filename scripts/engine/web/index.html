@@ -61,6 +61,11 @@ header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var
 .statusline{padding:7px 18px;font-size:12px;color:var(--dim);background:#0c0f14;
   border-bottom:1px solid var(--line);display:flex;gap:14px;flex:none;min-height:33px;align-items:center}
 .statusline b{color:var(--fg);font-weight:600}
+.statusline .spacer{flex:1}
+.btn-cancel{display:none;background:rgba(255,91,98,.12);border:1px solid rgba(255,91,98,.4);
+  color:#ff9aa0;font-size:11.5px;padding:3px 12px;border-radius:6px;cursor:pointer;flex:none}
+.btn-cancel:hover{background:rgba(255,91,98,.22);color:#ffc0c4}
+.btn-cancel.on{display:inline-block}
 
 /* ---------- 主体 ---------- */
 main{flex:1;display:flex;overflow:hidden}
@@ -133,6 +138,14 @@ main{flex:1;display:flex;overflow:hidden}
 .spec i{flex:1;background:linear-gradient(180deg,#4d8dff,#2a4d8f);border-radius:1px 1px 0 0;
   min-height:2px;opacity:.85}
 .spec i.cut{background:#3a3f4a}
+.spec-axis{position:relative;height:13px;margin:-6px 0 6px;border-top:1px solid #242b36;
+  font-size:9px;color:var(--dim2)}
+.spec-axis .tick{position:absolute;top:2px;transform:translateX(-50%);white-space:nowrap}
+.spec-axis .tick.end{right:0;left:auto!important;transform:none}
+.spec-axis .cutline{position:absolute;top:-1px;bottom:-3px;width:1px;background:#ff9aa0}
+.spec-cut-label{font-size:10px;color:#ffca7a;margin:-4px 0 7px;text-align:right}
+.verdict-caveat{font-size:11.5px;color:#ffca7a;line-height:1.5;margin-top:6px;
+  padding-top:6px;border-top:1px dashed rgba(240,169,46,.3)}
 .flags{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .flag{font-size:11.5px;padding:5px 8px;border-radius:6px;line-height:1.5}
 .flag.bad{background:rgba(255,91,98,.1);color:#ffa8ad;border-left:2px solid var(--bad)}
@@ -332,7 +345,9 @@ a.lnk:hover{text-decoration:underline}
 
 <div class="progress" id="bar"><i></i></div>
 <div class="statusline" id="status">
-  <span>就绪。默认只深度分析「有多版」的曲目，其余只读元数据，100 GB 库也能跑。</span>
+  <span id="statusText">就绪。默认只深度分析「有多版」的曲目，其余只读元数据，100 GB 库也能跑。</span>
+  <span class="spacer"></span>
+  <button class="btn-cancel" id="cancelScan" title="停止本次扫描">取消扫描</button>
 </div>
 
 <main>
@@ -510,7 +525,7 @@ function setScene(name){
     state.songNames = [];
     state.q = "";
   }
-  $("#status").innerHTML = `<span>${cfg.status}</span>`;
+  $("#statusText").innerHTML = `<span>${cfg.status}</span>`;
 }
 document.querySelectorAll(".scene").forEach(c=>c.onclick = ()=> setScene(c.dataset.scene));
 $("#songInput").oninput = e => {
@@ -594,18 +609,18 @@ async function handleDrop(e){
   }
   if(!$("#viewScan").classList.contains("on")) switchTab("scan");
   if(!name){
-    $("#status").innerHTML = '<span>浏览器没说清是哪个文件夹，请在弹出的窗口里选一下。</span>';
+    $("#statusText").innerHTML = '<span>浏览器没说清是哪个文件夹，请在弹出的窗口里选一下。</span>';
     $("#pick").click();
     return;
   }
-  $("#status").innerHTML = `<span>收到「${esc(name)}」，正在定位本地路径…</span>`;
+  $("#statusText").innerHTML = `<span>收到「${esc(name)}」，正在定位本地路径…</span>`;
   let r = {paths:[]};
   try{ r = await getJSON("/api/resolve-folder?name="+encodeURIComponent(name)); }
   catch(err){ /* 定位失败交给原生对话框兜底 */ }
   const paths = r.paths||[];
   const startScan = p=>{
     $("#rootInput").value = p;
-    $("#status").innerHTML = `<span>定位到 <b>${esc(p)}</b>，开始分析…</span>`;
+    $("#statusText").innerHTML = `<span>定位到 <b>${esc(p)}</b>，开始分析…</span>`;
     $("#scan").click();
   };
   if(paths.length===1){ startScan(paths[0]); return; }
@@ -618,7 +633,7 @@ async function handleDrop(e){
     startScan(paths[i]);
     return;
   }
-  $("#status").innerHTML = `<span style="color:var(--warn)">没定位到「${esc(name)}」，请在弹出的窗口里选它。</span>`;
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">没定位到「${esc(name)}」，请在弹出的窗口里选它。</span>`;
   $("#pick").click();
 }
 
@@ -685,7 +700,9 @@ $("#scan").onclick = async () => {
   const raw = $("#rootInput").value.split(";").map(s=>s.trim()).filter(Boolean);
   if(!raw.length){ alert("先选一个文件夹"); return; }
   state.data = null;
+  state.cancelled = false;
   $("#scan").disabled = true;
+  $("#cancelScan").classList.add("on");
   $("#bar").classList.add("on");
   $("#list").innerHTML = `<div class="empty"><h3>正在分析…</h3>
     <div class="hint">首次跑全库会慢一些，之后有缓存，只算新增/改动过的文件</div></div>`;
@@ -697,13 +714,26 @@ $("#scan").onclick = async () => {
     state.jobId = r.job_id;
     poll();
   }catch(e){
-    $("#status").innerHTML = `<span style="color:var(--bad)">启动失败：${esc(e.message)}</span>`;
-    $("#scan").disabled = false;
+    $("#statusText").innerHTML = `<span style="color:var(--bad)">启动失败：${esc(e.message)}</span>`;
+    $("#scan").disabled = false; $("#cancelScan").classList.remove("on");
   }
 };
 
+// 取消扫描：调后端 cooperative cancel 标志，立即停止轮询并给出明确提示。
+// 已完成的部分不生成报告（后端在 pipeline 各检查点直接返回"已取消"）。
+$("#cancelScan").onclick = async ()=>{
+  if(!state.jobId || state.cancelled) return;
+  state.cancelled = true;
+  $("#cancelScan").classList.remove("on");
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">正在停止…</span>`;
+  try{ await fetch("/api/cancel/"+state.jobId); }catch(e){}
+  $("#statusText").innerHTML = `<span style="color:var(--warn)">已取消本次扫描。已完成的部分不生成报告；如需结果请重新分析。</span>`;
+  $("#scan").disabled=false; $("#bar").classList.remove("on");
+  state.jobId = null;
+};
+
 async function poll(){
-  if(!state.jobId) return;
+  if(!state.jobId || state.cancelled) return;
   let j;
   try{ j = await (await fetch("/api/job/"+state.jobId)).json(); }
   catch(e){ setTimeout(poll,1200); return; }
@@ -711,22 +741,23 @@ async function poll(){
   const p = j.progress||{};
   const pct = p.total ? Math.min(100, p.done/p.total*100) : (j.state==="done"?100:6);
   $("#bar").querySelector("i").style.width = pct+"%";
-  $("#status").innerHTML = `<span><b>${esc(p.phase||"…")}</b></span>
+  $("#statusText").innerHTML = `<span><b>${esc(p.phase||"…")}</b></span>
     <span class="mono">${p.done||0}/${p.total||0}</span>
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.current||"")}</span>`;
 
-  if(j.state==="error"){
-    $("#status").innerHTML = `<span style="color:var(--bad)">出错：${esc(j.error||"")}</span>`;
-    $("#scan").disabled=false; $("#bar").classList.remove("on"); return;
+  if(j.state==="error" || (j.error && String(j.error).includes("取消"))){
+    $("#statusText").innerHTML = `<span style="color:var(--warn)">${j.error&&String(j.error).includes("取消")?"已取消本次扫描，未生成报告。":"出错："+esc(j.error||"")}</span>`;
+    $("#scan").disabled=false; $("#bar").classList.remove("on");
+    $("#cancelScan").classList.remove("on"); state.jobId=null; return;
   }
   if(j.state==="done"){
     $("#bar").querySelector("i").style.width="100%";
     setTimeout(()=>$("#bar").classList.remove("on"), 600);
-    $("#scan").disabled=false;
+    $("#scan").disabled=false; $("#cancelScan").classList.remove("on");
     const data = await (await fetch("/api/result/"+state.jobId)).json();
     state.data = data; render();
     const st = data.stats||{};
-    $("#status").innerHTML = `<span>✅ 完成：<b>${st.songs_multi||0}</b> 首多版本曲目，
+    $("#statusText").innerHTML = `<span>✅ 完成：<b>${st.songs_multi||0}</b> 首多版本曲目，
       深度分析 <b>${st.files_analyzed||0}</b> 个文件，耗时 <b>${(st.elapsed_sec||0).toFixed(1)}s</b>，
       结果已缓存（同目录重扫只算新文件）</span>`;
     return;
@@ -829,10 +860,18 @@ function verdictHTML(g){
   }
   const badTotal = vs.reduce((n,v)=>n+(v.flags||[]).filter(f=>f.level==="bad").length,0);
   const cls = (bestBad.length || badTotal>2) ? "bad" : "";
+  // 诚实边界：19-20.9 kHz 是最难判区间（320k MP3 / AAC 256 / 自然滚降都在此），
+  // 频谱只能证伪不能证真，这里显式降级为"建议复核"而非"判死"。
+  const cz = best.cutoff_khz;
+  const boundary = (cz!=null && cz>=19 && cz<=20.9);
+  const caveat = boundary
+    ? `<div class="verdict-caveat">这段落在 19–21 kHz 的灰区：高码率有损、AAC 256 与自然滚降都可能长这样，
+       单看频谱判不死。建议点该版本的「Spek 复核」看形状，或用 ABX 盲听定夺——别仅凭这个分数删歌。</div>` : "";
   return `<div class="verdict ${cls}">
     <div class="vh">一句话结论 · 不用懂参数</div>
     <div class="vt">留<b>第 ${best.rank} 版</b>（${esc(bn)}）：${esc(reason)}。${worstLine}
       ${vs.length>1?`<span class="smart-hint">展开看每版详细对比 ↓</span>`:""}</div>
+      ${caveat}
   </div>`;
 }
 
@@ -856,6 +895,27 @@ function groupHTML(g, idx){
   const vers = g.versions.map(v=>verHTML(v)).join("");
   return `<div class="group" ${idx===0?"":""} id="g${idx}">${head}
     <div class="gbody">${verdictHTML(g)}${adv}<div class="vers">${vers}</div></div></div>`;
+}
+
+function specAxisHTML(v, env){
+  if(!env.length) return "";
+  const nyq = v.nyquist_khz || (v.sample_rate/2000) || 24;
+  const marks = [[10,"10k"],[16,"16k"],[20,"20k"]].filter(([k])=>k<nyq);
+  // 频带为对数分布，刻度按频点在 envelope 中的序号定位，故只标"约"。
+  const ticks = marks.map(([k,label])=>{
+    let idx = env.findIndex(e=>e.f>=k*1000);
+    if(idx<0) return "";
+    const left = idx/Math.max(1,env.length-1)*100;
+    return `<span class="tick" style="left:${left.toFixed(1)}%">${label}</span>`;
+  }).join("");
+  let cutline = "";
+  const cutLabel = v.cutoff_khz
+    ? `<div class="spec-cut-label">频谱在约 ${v.cutoff_khz} kHz 处截止${v.cutoff_khz<nyq-2?'（灰区）':''}</div>` : "";
+  if(v.cutoff_khz){
+    let ci = env.findIndex(e=>e.f>=v.cutoff_khz*1000);
+    if(ci>=0) cutline = `<span class="cutline" style="left:${(ci/Math.max(1,env.length-1)*100).toFixed(1)}%"></span>`;
+  }
+  return `<div class="spec-axis">${ticks}<span class="tick end">${Math.round(nyq)}k</span>${cutline}</div>${cutLabel}`;
 }
 
 function verHTML(v){
@@ -884,6 +944,7 @@ function verHTML(v){
     <div class="vname">${esc(v.name)}</div>
     <div class="valbum">${esc(v.album||"")} ${v.date?"· "+esc(v.date):""} · ${fmtDur(v.duration)} · ${fmtSize(v.size_bytes)}</div>
     <div class="spec">${bars}</div>
+    ${specAxisHTML(v, env)}
     <div class="grid2">
       <div class="cell" title="声音内容真实延伸到多高的频率。真无损会一直延伸到奈奎斯特频率；被低通过说明是从低码率转来的，文件大小骗不了人。">
         <div class="k">频谱截止</div>
@@ -939,6 +1000,8 @@ const HELP = `
 <ul>
 <li>DR 低不等于音质差：有些老录音本身就是高压缩母带，低 DR 是它的原貌。</li>
 <li>频率上限高不等于好听：升频能把文件撑到 96 kHz，信息一点没多。</li>
+<li>频谱只能证伪，不能证真：有断崖基本可判有问题；没有断崖也不能证明一定真无损（高码率 MP3 V0 / AAC 256 可能看不出）。</li>
+<li>16 kHz 有横切线不一定是假：44.1 kHz 母带本就可能在那儿收尾，钢琴等乐器高频天然少。19–21 kHz 是最难判的灰区，别据此一票否决。</li>
 <li>同一个录音不同母带，DR 差 2–4 dB 很常见；差到 8 dB 以上通常就是两次不同的母带处理。</li>
 </ul>
 <h4>免费工具补位（我没内建、但值得装）</h4>
